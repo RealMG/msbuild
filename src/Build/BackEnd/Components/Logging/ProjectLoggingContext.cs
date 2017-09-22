@@ -21,7 +21,7 @@ namespace Microsoft.Build.BackEnd.Logging
     /// <summary>
     /// A logging context for a project.
     /// </summary>
-    internal class ProjectLoggingContext : BaseLoggingContext
+    internal class ProjectLoggingContext : BuildLoggingContext
     {
         /// <summary>
         /// The project's full path
@@ -83,8 +83,8 @@ namespace Microsoft.Build.BackEnd.Logging
             ProjectPropertyInstanceEnumeratorProxy properties = null;
             ProjectItemInstanceEnumeratorProxy items = null;
 
-            IEnumerable<ProjectPropertyInstance> projectPropertiesEnumerator = projectProperties == null ? Collections.ReadOnlyEmptyList<ProjectPropertyInstance>.Instance : null;
-            IEnumerable<ProjectItemInstance> projectItemsEnumerator = projectItems == null ? Collections.ReadOnlyEmptyList<ProjectItemInstance>.Instance : null;
+            IEnumerable<ProjectPropertyInstance> projectPropertiesEnumerator = projectProperties == null ? Array.Empty<ProjectPropertyInstance>() : null;
+            IEnumerable<ProjectItemInstance> projectItemsEnumerator = projectItems == null ? Array.Empty<ProjectItemInstance>() : null;
 
             string[] propertiesToSerialize = LoggingService.PropertiesToSerialize;
 

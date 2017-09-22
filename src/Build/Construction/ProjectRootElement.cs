@@ -13,8 +13,10 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Xml;
+using Microsoft.Build.BackEnd.Logging;
 using Microsoft.Build.Collections;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Framework;
@@ -62,6 +64,11 @@ namespace Microsoft.Build.Construction
         private static readonly ProjectRootElementCache.OpenProjectRootElement s_openLoaderDelegate = OpenLoader;
 
         private static readonly ProjectRootElementCache.OpenProjectRootElement s_openLoaderPreserveFormattingDelegate = OpenLoaderPreserveFormatting;
+
+        /// <summary>
+        /// Used to determine if a file is an empty XML file if it ONLY contains an XML declaration like &lt;?xml version="1.0" encoding="utf-8"?&gt;.
+        /// </summary>
+        private static readonly Lazy<Regex> XmlDeclarationRegEx = new Lazy<Regex>(() => new Regex(@"\A\s*\<\?\s*xml.*\?\>\s*\Z"), isThreadSafe: true);
 
         /// <summary>
         /// The default encoding to use / assume for a new project.
@@ -155,11 +162,6 @@ namespace Microsoft.Build.Construction
         private string _dirtyParameter = String.Empty;
 
         /// <summary>
-        /// The build event context errors should be logged in.
-        /// </summary>
-        private BuildEventContext _buildEventContext;
-
-        /// <summary>
         /// Initialize a ProjectRootElement instance from a XmlReader.
         /// May throw InvalidProjectFileException.
         /// Leaves the project dirty, indicating there are unsaved changes.
@@ -217,16 +219,14 @@ namespace Microsoft.Build.Construction
         /// Assumes path is already normalized.
         /// May throw InvalidProjectFileException.
         /// </summary>
-        private ProjectRootElement(string path, ProjectRootElementCache projectRootElementCache, BuildEventContext buildEventContext,
+        private ProjectRootElement(string path, ProjectRootElementCache projectRootElementCache,
             bool preserveFormatting)
             : base()
         {
             ErrorUtilities.VerifyThrowArgumentLength(path, "path");
             ErrorUtilities.VerifyThrowInternalRooted(path);
             ErrorUtilities.VerifyThrowArgumentNull(projectRootElementCache, "projectRootElementCache");
-            ErrorUtilities.VerifyThrowArgumentNull(buildEventContext, "buildEventContext");
             _projectRootElementCache = projectRootElementCache;
-            _buildEventContext = buildEventContext;
 
             IncrementVersion();
             _versionOnDisk = _version;
@@ -1548,6 +1548,14 @@ namespace Microsoft.Build.Construction
         }
 
         /// <summary>
+        /// Creates a project SDK element attached to this project.
+        /// </summary>
+        public ProjectSdkElement CreateProjectSdkElement(string sdkName, string sdkVersion)
+        {
+            return ProjectSdkElement.CreateDisconnected(sdkName, sdkVersion, this);
+        }
+
+        /// <summary>
         /// Save the project to the file system, if dirty.
         /// Uses the Encoding returned by the Encoding property.
         /// Creates any necessary directories.
@@ -1701,6 +1709,8 @@ namespace Microsoft.Build.Construction
         /// If the new state has invalid XML or MSBuild syntax, then this method throws an <see cref="InvalidProjectFileException"/>.
         /// When this happens, the state of this object does not change.
         /// 
+        /// Reloading from an XMLReader will retain the previous root element location (<see cref="FullPath"/>, <see cref="DirectoryPath"/>, <see cref="ProjectFileLocation"/>).
+        /// 
         /// </summary>
         /// <param name="reader">Reader to read from</param>
         /// <param name="throwIfUnsavedChanges">
@@ -1712,7 +1722,15 @@ namespace Microsoft.Build.Construction
         /// </param>
         public void ReloadFrom(XmlReader reader, bool throwIfUnsavedChanges = true, bool? preserveFormatting = null)
         {
-            Func<bool, XmlDocumentWithLocation> documentProducer = shouldPreserveFormatting => LoadDocument(reader, shouldPreserveFormatting);
+            Func<bool, XmlDocumentWithLocation> documentProducer = shouldPreserveFormatting =>
+            {
+                var document =  LoadDocument(reader, shouldPreserveFormatting);
+
+                document.FullPath = this.FullPath;
+
+                return document;
+            };
+
             ReloadFrom(documentProducer, throwIfUnsavedChanges, preserveFormatting);
         }
 
@@ -1797,13 +1815,13 @@ namespace Microsoft.Build.Construction
         /// Path provided must be a canonicalized full path.
         /// May throw InvalidProjectFileException or an IO-related exception.
         /// </summary>
-        internal static ProjectRootElement OpenProjectOrSolution(string fullPath, IDictionary<string, string> globalProperties, string toolsVersion, ILoggingService loggingService, ProjectRootElementCache projectRootElementCache, BuildEventContext buildEventContext, bool isExplicitlyLoaded)
+        internal static ProjectRootElement OpenProjectOrSolution(string fullPath, IDictionary<string, string> globalProperties, string toolsVersion, ProjectRootElementCache projectRootElementCache, bool isExplicitlyLoaded)
         {
             ErrorUtilities.VerifyThrowInternalRooted(fullPath);
 
             ProjectRootElement projectRootElement = projectRootElementCache.Get(
                 fullPath,
-                (path, cache) => CreateProjectFromPath(path, globalProperties, toolsVersion, loggingService, cache, buildEventContext,
+                (path, cache) => CreateProjectFromPath(path, globalProperties, toolsVersion, cache,
                                     preserveFormatting: false),
                 isExplicitlyLoaded,
                 // don't care about formatting, reuse whatever is there
@@ -1887,6 +1905,111 @@ namespace Microsoft.Build.Construction
         }
 
         /// <summary>
+        /// Creates and returns a list of <see cref="ProjectImportElement"/> nodes which are implicitly
+        /// referenced by the Project.
+        /// </summary>
+        /// <param name="currentProjectOrImport">Current project</param>
+        /// <returns>An <see cref="IEnumerable{SdkReference}"/> containing details of the SDKs referenced by the project.</returns>
+        internal List<ProjectImportElement> GetImplicitImportNodes(ProjectRootElement currentProjectOrImport)
+        {
+            var nodes = new List<ProjectImportElement>();
+
+            string sdk = Sdk;
+            if (!string.IsNullOrWhiteSpace(sdk))
+            {
+                foreach (var referencedSdk in ParseSdks(sdk, SdkLocation))
+                {
+                    nodes.Add(ProjectImportElement.CreateImplicit("Sdk.props", currentProjectOrImport, ImplicitImportLocation.Top, referencedSdk));
+                    nodes.Add(ProjectImportElement.CreateImplicit("Sdk.targets", currentProjectOrImport, ImplicitImportLocation.Bottom, referencedSdk));
+                }
+            }
+
+            foreach (var sdkNode in Children.OfType<ProjectSdkElement>())
+            {
+                var referencedSdk = new SdkReference(
+                    sdkNode.XmlElement.GetAttribute("Name"),
+                    sdkNode.XmlElement.GetAttribute("Version"),
+                    sdkNode.XmlElement.GetAttribute("MinimumVersion"));
+
+                nodes.Add(ProjectImportElement.CreateImplicit("Sdk.props", currentProjectOrImport, ImplicitImportLocation.Top, referencedSdk));
+                nodes.Add(ProjectImportElement.CreateImplicit("Sdk.targets", currentProjectOrImport, ImplicitImportLocation.Bottom, referencedSdk));
+            }
+
+            return nodes;
+        }
+
+        private static IEnumerable<SdkReference> ParseSdks(string sdks, IElementLocation sdkLocation)
+        {
+            foreach (string sdk in sdks.Split(';').Select(i => i.Trim()))
+            {
+                SdkReference sdkReference;
+
+                if (!SdkReference.TryParse(sdk, out sdkReference))
+                {
+                    ProjectErrorUtilities.ThrowInvalidProject(sdkLocation, "InvalidSdkFormat", sdks);
+                }
+
+                yield return sdkReference;
+            }
+        }
+
+        /// <summary>
+        /// Determines if the specified file is an empty XML file meaning it has no contents, contains only whitespace, or
+        /// only an XML declaration.  If the file does not exist, it is not considered empty.
+        /// </summary>
+        /// <param name="path">The full path to a file to check.</param>
+        /// <returns><code>true</code> if the file is an empty XML file, otherwise <code>false</code>.</returns>
+        internal static bool IsEmptyXmlFile(string path)
+        {
+            // The maximum number of characters of the file to read to check if its empty or not.  Ideally we
+            // would only look at zero-length files but empty XML files can contain just an xml declaration:
+            //
+            //   <? xml version="1.0" encoding="utf-8" standalone="yes" ?>
+            //
+            // And this should also be treated as if the file is empty.
+            //
+            const int maxSizeToConsiderEmpty = 100;
+
+            if (!File.Exists(path))
+            {
+                // Non-existent files are not treated as empty
+                //
+                return false;
+            }
+
+            try
+            {
+                FileInfo fileInfo = new FileInfo(path);
+
+                if (fileInfo.Length == 0)
+                {
+                    // Zero length files are empty
+                    //
+                    return true;
+                }
+
+                if (fileInfo.Length > maxSizeToConsiderEmpty)
+                {
+                    // Files greater than the maximum bytes to check are not empty
+                    //
+                    return false;
+                }
+
+                string contents = File.ReadAllText(path);
+
+                // If the file is only whitespace or the XML declaration then it empty
+                //
+                return String.IsNullOrEmpty(contents) || XmlDeclarationRegEx.Value.IsMatch(contents);
+            }
+            catch (Exception)
+            {
+                // ignored
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Returns a new instance of ProjectRootElement that is affiliated with the same ProjectRootElementCache.
         /// </summary>
         /// <param name="owner">The factory to use for creating the new instance.</param>
@@ -1915,7 +2038,6 @@ namespace Microsoft.Build.Construction
             return new ProjectRootElement(
                 path,
                 projectRootElementCache,
-                new BuildEventContext(0, BuildEventContext.InvalidNodeId, BuildEventContext.InvalidProjectContextId, BuildEventContext.InvalidTaskId),
                 preserveFormatting);
         }
 
@@ -1931,9 +2053,7 @@ namespace Microsoft.Build.Construction
                 string projectFile,
                 IDictionary<string, string> globalProperties,
                 string toolsVersion,
-                ILoggingService loggingService,
                 ProjectRootElementCache projectRootElementCache,
-                BuildEventContext buildEventContext,
                 bool preserveFormatting
             )
         {
@@ -1947,7 +2067,7 @@ namespace Microsoft.Build.Construction
                 }
 
                 // OK it's a regular project file, load it normally.
-                return new ProjectRootElement(projectFile, projectRootElementCache, buildEventContext, preserveFormatting);
+                return new ProjectRootElement(projectFile, projectRootElementCache, preserveFormatting);
             }
             catch (InvalidProjectFileException)
             {

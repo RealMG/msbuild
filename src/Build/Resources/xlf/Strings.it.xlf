@@ -465,7 +465,7 @@
       </trans-unit>
       <trans-unit id="ImportedProjectFromExtensionsPathNotFoundFromAppConfig">
         <source>MSB4226: The imported project "{0}" was not found. Also, tried to find "{1}" in the fallback search path(s) for {2} - {3} . These search paths are defined in "{4}". Confirm that the path in the &lt;Import&gt; declaration is correct, and that the file exists on disk in one of the search paths.</source>
-        <target state="translated">MSB4226: il progetto importato "{0}" non è stato trovato. È stato anche effettuato un tentativo di trovare "{1}" nei percorsi di ricerca di fallback per {2} - {3} . Questi percorsi di ricerca sono definiti in "{4}". Verificare che il percorso nella dichiarazione &lt;Import&gt; sia corretto e che il file sia presente sul disco in uno dei percorsi di ricerca.</target>
+        <target state="translated">MSB4226: il progetto importato "{0}" non è stato trovato. È stato anche effettuato un tentativo di trovare "{1}" nei percorsi di ricerca di fallback per {2} - {3}. Questi percorsi di ricerca sono definiti in "{4}". Verificare che il percorso nella dichiarazione &lt;Import&gt; sia corretto e che il file sia presente sul disco in uno dei percorsi di ricerca.</target>
         <note>{StrBegin="MSB4226: "}LOCALIZATION: &lt;Import&gt; should not be localized.</note>
       </trans-unit>
       <trans-unit id="ImportedProjectFromExtensionsPathNotFound">
@@ -1952,11 +1952,6 @@ Utilizzo:          {0} Utilizzo medio: {1:###.0}</target>
         <target state="translated">MSB4229: il valore "{0}" non è valido per una specifica di SDK. L'attributo deve essere un elenco di coppie nome SDK/versione minima delimitate da punti e virgola e separati da una barra.</target>
         <note>{StrBegin="MSB4229: "}</note>
       </trans-unit>
-      <trans-unit id="TaskFactoryNotSupportedFailure">
-        <source>MSB4801: The task factory "{0}" could not be loaded because this version of MSBuild does not support it.</source>
-        <target state="translated">MSB4801: non è stato possibile caricare la factory delle attività "{0}" perché non è supportata in questa versione di MSBuild.</target>
-        <note>{StrBegin="MSB4801: "}</note>
-      </trans-unit>
       <trans-unit id="TaskInstantiationFailureNotSupported">
         <source>MSB4802: The "{0}" task could not be instantiated from "{1}". This version of MSBuild does not support {2}.</source>
         <target state="translated">MSB4802: non è stato possibile creare l'istanza dell'attività "{0}" da "{1}". Questa versione di MSBuild non supporta {2}.</target>
@@ -1981,6 +1976,76 @@ Utilizzo:          {0} Utilizzo medio: {1:###.0}</target>
         <source>MSB4231: ProjectRootElement can't reload if it contains unsaved changes.</source>
         <target state="translated">MSB4231: non è possibile ricaricare l'elemento radice del progetto se contiene modifiche non salvate.</target>
         <note>{StrBegin="MSB4231: "}</note>
+      </trans-unit>
+      <trans-unit id="EvaluationStarted">
+        <source>Evaluation started ("{0}")</source>
+        <target state="translated">Valutazione avviata ("{0}")</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="EvaluationFinished">
+        <source>Evaluation finished ("{0}")</source>
+        <target state="translated">Valutazione terminata ("{0}")</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="InvalidBinaryLoggerParameters">
+        <source>MSB4234: Invalid binary logger parameter(s): "{0}". Expected: ProjectImports={{None,Embed,ZipFile}} and/or [LogFile=]filePath.binlog (the log file name or path, must have the ".binlog" extension).</source>
+        <target state="translated">MSB4234: i parametri del logger binario non sono validi: "{0}". Parametri previsti: ProjectImports={{None,Embed,ZipFile}} e/o [LogFile=]filePath.binlog (nome o percorso del file di log. Deve avere estensione ".binlog").</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="IncludeRemoveOrUpdate">
+        <source>MSB4232: Items that are outside Target elements must have one of the following operations: Include, Update, or Remove.</source>
+        <target state="translated">MSB4232: gli elementi esterni agli elementi Target devono contenere una delle operazioni seguenti: Include, Update o Remove.</target>
+        <note>{StrBegin="MSB4232: "} Target, Include, Update, and Remove should not be localized and their casing should not be changed</note>
+      </trans-unit>
+      <trans-unit id="PropertyReassignment">
+        <source>Property reassignment: $({0})="{1}" (previous value: "{2}") at {3}</source>
+        <target state="translated">Riassegnazione della proprietà: $({0})="{1}" (valore precedente: "{2}") in {3}</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="CouldNotResolveSdk">
+        <source>MSB4236: The SDK '{0}' specified could not be found.</source>
+        <target state="translated">MSB4236: l'SDK '{0}' specificato non è stato trovato.</target>
+        <note>{StrBegin="MSB4236: "}</note>
+      </trans-unit>
+      <trans-unit id="CouldNotLoadSdkResolver">
+        <source>MSB4237: An SDK resolver was found but could not be loaded. Error: {0}.</source>
+        <target state="translated">MSB4237: è stato trovato un resolver di SDK che però non è stato caricato. Errore: {0}.</target>
+        <note>{StrBegin="MSB4237: "}</note>
+      </trans-unit>
+      <trans-unit id="InvalidSdkElementName">
+        <source>MSB4238: The name "{0}" is not a valid SDK name.</source>
+        <target state="translated">MSB4238: "{0}" non è un nome di SDK valido.</target>
+        <note>{StrBegin="MSB4238: "}</note>
+      </trans-unit>
+      <trans-unit id="UnsupportedLogFileFormat">
+        <source>MSB4235: The log file format version is {0}, whereas this version of MSBuild only supports versions up to {1}.</source>
+        <target state="translated">MSB4235: la versione del formato del file di log è la {0}, ma questa versione di MSBuild supporta solo le versioni fino alla {1}.</target>
+        <note>{StrBegin="MSB4235: "}</note>
+      </trans-unit>
+      <trans-unit id="ProjectEvaluationPerformanceSummary">
+        <source>Project Evaluation Performance Summary:</source>
+        <target state="translated">Riepilogo prestazioni valutazione progetto:</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="ProjectImportSkippedFalseCondition">
+        <source>Project "{0}" was not imported by "{1}" at ({2},{3}), due to false condition; ({4}) was evaluated as ({5}).</source>
+        <target state="translated">Il progetto "{0}" non è stato importato da "{1}" a ({2},{3}), a causa della condizione false. ({4}) ha restituito ({5}).</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="ProjectImportSkippedNoMatches">
+        <source>Project "{0}" was not imported by "{1}" at ({2},{3}), due to no matching files.</source>
+        <target state="translated">Il progetto "{0}" non è stato importato da "{1}" a ({2},{3}) perché non esistono file corrispondenti.</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="ProjectImportSkippedEmptyFile">
+        <source>Project "{0}" was not imported by "{1}" at ({2},{3}), due to the file being empty.</source>
+        <target state="translated">Il progetto "{0}" non è stato importato da "{1}" a ({2},{3}) perché il file è vuoto.</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="ProjectImported">
+        <source>Importing project "{0}" into project "{1}" at ({2},{3}).</source>
+        <target state="translated">Importazione del progetto "{0}" nel progetto "{1}" a ({2},{3}).</target>
+        <note />
       </trans-unit>
     </body>
   </file>

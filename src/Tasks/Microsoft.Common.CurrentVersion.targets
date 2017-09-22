@@ -75,6 +75,8 @@ Copyright (C) Microsoft Corporation. All rights reserved.
     <TargetFrameworkMoniker Condition="'$(TargetFrameworkMoniker)' == '' and '$(TargetFrameworkProfile)' != ''">$(TargetFrameworkIdentifier),Version=$(TargetFrameworkVersion),Profile=$(TargetFrameworkProfile)</TargetFrameworkMoniker>
     <TargetFrameworkMoniker Condition="'$(TargetFrameworkMoniker)' == ''">$(TargetFrameworkIdentifier),Version=$(TargetFrameworkVersion)</TargetFrameworkMoniker>
 
+    <!-- When working off a packaged reference assemblies, do not go to machine-global locations. This property is target-framework-specific, so it cannot be overridden in msbuild.exe.config once and for all. -->
+    <FrameworkPathOverride Condition="'$(FrameworkPathOverride)' == '' And Exists('$(TargetFrameworkRootPath)$(TargetFrameworkIdentifier)\$(TargetFrameworkVersion)')">$(TargetFrameworkRootPath)$(TargetFrameworkIdentifier)\$(TargetFrameworkVersion)</FrameworkPathOverride>
     <!-- The FrameworkPathOverride is required for the inproc visual basic compiler to initialize when targeting target frameworks less than 4.0. If .net 2.0 is not installed then the property value above will not provide the location
              of mscorlib. This is also true if the build author overrides this property to some other directory which does not contain mscorlib.dll. In the case we cannot find mscorlib.dll at the correct location
              we need to find a directory which does contain mscorlib to allow the inproc compiler to initialize and give us the chance to show certain dialogs in the IDE (which only happen after initialization).-->
@@ -154,6 +156,8 @@ Copyright (C) Microsoft Corporation. All rights reserved.
     <_DocumentationFileProduced>true</_DocumentationFileProduced>
     <_DocumentationFileProduced Condition="'$(DocumentationFile)'==''">false</_DocumentationFileProduced>
 
+    <!-- Whether or not a reference assembly is produced. -->
+    <ProduceReferenceAssembly Condition="'$(ProduceReferenceAssembly)' == ''">false</ProduceReferenceAssembly>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(OutputPath)' == '' ">
@@ -281,6 +285,8 @@ Copyright (C) Microsoft Corporation. All rights reserved.
     <!-- Example, c:\MyProjects\MyProject\bin\debug\MyAssembly.dll -->
     <TargetPath Condition=" '$(TargetPath)' == '' ">$(TargetDir)$(TargetFileName)</TargetPath>
 
+    <TargetRefPath Condition=" '$(TargetRefPath)' == '' and '$(ProduceReferenceAssembly)' == 'true' ">$([MSBuild]::NormalizePath($(TargetDir), 'ref', $(TargetFileName)))</TargetRefPath>
+
     <!-- Example, c:\MyProjects\MyProject\ -->
     <ProjectDir Condition=" '$(ProjectDir)' == '' ">$(MSBuildProjectDirectory)\</ProjectDir>
 
@@ -348,6 +354,13 @@ Copyright (C) Microsoft Corporation. All rights reserved.
   <ItemGroup>
     <IntermediateAssembly Include="$(IntermediateOutputPath)$(TargetName)$(TargetExt)"/>
     <FinalDocFile Include="@(DocFileItem->'$(OutDir)%(Filename)%(Extension)')"/>
+    <CopyUpToDateMarker Include="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', '$(MSBuildProjectFile).CopyComplete'))" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(ProduceReferenceAssembly)' == 'true'">
+    <IntermediateRefAssembly Include="$(IntermediateOutputPath)ref\$(TargetName)$(TargetExt)" Condition="'@(IntermediateRefAssembly)' == ''" />
+    <CreateDirectory Include="@(IntermediateRefAssembly->'%(RootDir)%(Directory)')" />
+    <CreateDirectory Include="$(OutDir)ref" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(_DebugSymbolsProduced)' == 'true'">
@@ -771,7 +784,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
       Name="Build"
       Condition=" '$(_InvalidConfigurationWarning)' != 'true' "
       DependsOnTargets="$(BuildDependsOn)"
-      Returns="$(TargetPath)" />
+      Returns="@(TargetPathWithTargetPlatformMoniker)" />
 
   <!--
     ============================================================
@@ -790,6 +803,16 @@ Copyright (C) Microsoft Corporation. All rights reserved.
     ============================================================
     -->
   <Target Name="AfterBuild"/>
+
+  <!--
+    ============================================================
+                                        Restore
+
+    This empty target is defined so that all projects can run Restore.  Most package management systems like
+    NuGet will override this target.
+    ============================================================
+    -->
+  <Target Name="Restore"/>
 
   <!--
     ============================================================
@@ -1360,6 +1383,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
       AfterResolveReferences
     </ResolveReferencesDependsOn>
   </PropertyGroup>
+
   <Target
       Name="ResolveReferences"
       DependsOnTargets="$(ResolveReferencesDependsOn)"/>
@@ -1781,8 +1805,9 @@ Copyright (C) Microsoft Corporation. All rights reserved.
     ============================================================
                                         GetTargetPath
 
-    This stand-alone target returns the name of the build product (i.e. EXE, DLL)
-    that would be produced if we built this project.
+    This target returns an item containing the build product (i.e. EXE, DLL)
+    that would be produced if we built this project, with some relevant
+    metadata.
     ============================================================
     -->
   <PropertyGroup>
@@ -1792,14 +1817,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
   <Target
       Name="GetTargetPath"
       DependsOnTargets="$(GetTargetPathDependsOn)"
-      Returns="@(TargetPathWithTargetPlatformMoniker)">
-    <ItemGroup>
-      <TargetPathWithTargetPlatformMoniker Include="$(TargetPath)">
-        <TargetPlatformMoniker>$(TargetPlatformMoniker)</TargetPlatformMoniker>
-        <TargetPlatformIdentifier>$(TargetPlatformIdentifier)</TargetPlatformIdentifier>
-      </TargetPathWithTargetPlatformMoniker>
-    </ItemGroup>
-  </Target>
+      Returns="@(TargetPathWithTargetPlatformMoniker)" />
 
   <!--
     ============================================================
@@ -1807,18 +1825,35 @@ Copyright (C) Microsoft Corporation. All rights reserved.
 
     This stand-alone target returns the name and version of the target platform for this project.
 
-    NOTE: The functionality of this target has been subsumed by GetTargetPath.  This target is
-    provided purely for compat reasons.
+    NOTE: The ProjectReference protocol uses only GetTargetPath. Computing the item
+    in this target allows projects to override GetTargetPath without having to reimplement
+    the details of the metadata computation.
     ============================================================
     -->
   <PropertyGroup>
-    <GetTargetPathWithTargetPlatformMonikerDependsOn>$(GetTargetPathDependsOn); GetTargetPath</GetTargetPathWithTargetPlatformMonikerDependsOn>
+    <GetTargetPathWithTargetPlatformMonikerDependsOn>$(GetTargetPathDependsOn)</GetTargetPathWithTargetPlatformMonikerDependsOn>
   </PropertyGroup>
 
+  <!--NOTE: since an overridden GetTargetPath might not include a DependsOn
+      for this target, it's safer to establish the dependency here with a
+      BeforeTargets. -->
   <Target
       Name="GetTargetPathWithTargetPlatformMoniker"
+      BeforeTargets="GetTargetPath"
       DependsOnTargets="$(GetTargetPathWithTargetPlatformMonikerDependsOn)"
-      Returns="@(TargetPathWithTargetPlatformMoniker)" />
+      Returns="@(TargetPathWithTargetPlatformMoniker)">
+    <ItemGroup>
+      <TargetPathWithTargetPlatformMoniker Include="$(TargetPath)">
+        <TargetPlatformMoniker>$(TargetPlatformMoniker)</TargetPlatformMoniker>
+        <TargetPlatformIdentifier>$(TargetPlatformIdentifier)</TargetPlatformIdentifier>
+        <TargetFrameworkIdentifier>$(TargetFrameworkIdentifier)</TargetFrameworkIdentifier>
+        <TargetFrameworkVersion>$(TargetFrameworkVersion)</TargetFrameworkVersion>
+        <TargetFrameworkVersion Condition="$(TargetFrameworkVersion.StartsWith('v'))">$(TargetFrameworkVersion.Substring(1))</TargetFrameworkVersion>
+        <ReferenceAssembly Condition="'$(ProduceReferenceAssembly)' == 'true'">$(TargetRefPath)</ReferenceAssembly>
+        <CopyUpToDateMarker>@(CopyUpToDateMarker)</CopyUpToDateMarker>
+      </TargetPathWithTargetPlatformMoniker>
+    </ItemGroup>
+  </Target>
 
   <!--
     ============================================================
@@ -2018,6 +2053,40 @@ Copyright (C) Microsoft Corporation. All rights reserved.
   </Target>
 
   <!--
+    ============================================================
+
+                                        FindReferenceAssembliesForReferences
+
+    Given the list of references, create a list of assemblies to pass to the compiler that
+    includes reference assemblies rather than implementation assemblies where possible.
+
+        [IN]
+        @(ReferencePath) - List of assembly references as resolved paths with ReferenceAssembly metadata
+
+        [OUT]
+        @(ReferencePathWithRefAssemblies) - Paths to resolved reference (or implementation) assemblies.
+    ============================================================
+    -->
+  <Target Name="FindReferenceAssembliesForReferences"
+          DependsOnTargets="ResolveReferences">
+    <ItemGroup>
+      <!-- Reference assemblies are not produced in all cases, but it's easier to consume them
+           if this metadatum is always populated. Ensure that it points to the implementation
+           assembly unless already specified. -->
+      <ReferencePath Condition="'%(ReferencePath.ReferenceAssembly)' == ''">
+        <ReferenceAssembly>%(FullPath)</ReferenceAssembly>
+      </ReferencePath>
+
+      <ReferencePathWithRefAssemblies Include="@(ReferencePath->'%(ReferenceAssembly)')"
+                                      Condition="'$(CompileUsingReferenceAssemblies)' != 'false'">
+        <OriginalPath Condition="'%(ReferencePath.Identity)' != '@(ReferencePath->'%(ReferenceAssembly)')'">%(ReferencePath.Identity)</OriginalPath>
+      </ReferencePathWithRefAssemblies>
+      <ReferencePathWithRefAssemblies Include="@(ReferencePath)"
+                                      Condition="'$(CompileUsingReferenceAssemblies)' == 'false'" />
+    </ItemGroup>
+  </Target>
+
+  <!--
     ====================================================================================================
 
                                         GenerateBindingRedirects
@@ -2104,6 +2173,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
 
   <Target
       Name="GetInstalledSDKLocations"
+      Condition="'@(SDKReference)' != ''"
       DependsOnTargets="$(GetInstalledSDKLocationsDependsOn)"
       Returns="@(InstalledSDKLocations)"
       >
@@ -2114,7 +2184,6 @@ Copyright (C) Microsoft Corporation. All rights reserved.
            SDKRegistryRoot="$(SDKReferenceRegistryRoot)"
            TargetPlatformVersion="$(TargetPlatformVersion)"
            TargetPlatformIdentifier="$(TargetPlatformIdentifier)"
-           Condition="'@(SDKReference)' != ''"
            >
       <Output TaskParameter="InstalledSDKs" ItemName="InstalledSDKLocations"/>
     </GetInstalledSDKLocations>
@@ -2126,7 +2195,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
            SDKRegistryRoot="$(SDKReferenceRegistryRoot)"
            TargetPlatformVersion="$(TargetPlatformVersionWindows81)"
            TargetPlatformIdentifier="$(TargetPlatformIdentifierWindows81)"
-           Condition="'@(SDKReference)' != '' and '$(SupportWindows81SDKs)' == 'true' and '$(TargetPlatformIdentifierWindows81)' != '' and '$(TargetPlatformVersionWindows81)' != ''"
+           Condition="'$(SupportWindows81SDKs)' == 'true' and '$(TargetPlatformIdentifierWindows81)' != '' and '$(TargetPlatformVersionWindows81)' != ''"
            WarnWhenNoSDKsFound="false"
            >
       <Output TaskParameter="InstalledSDKs" ItemName="InstalledSDKLocations"/>
@@ -2138,7 +2207,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
            SDKRegistryRoot="$(SDKReferenceRegistryRoot)"
            TargetPlatformVersion="$(TargetPlatformVersionWindowsPhone81)"
            TargetPlatformIdentifier="$(TargetPlatformIdentifierWindowsPhone81)"
-           Condition="'@(SDKReference)' != '' and '$(SupportWindowsPhone81SDKs)' == 'true' and '$(TargetPlatformIdentifierWindowsPhone81)' != '' and '$(TargetPlatformVersionWindowsPhone81)' != ''"
+           Condition="'$(SupportWindowsPhone81SDKs)' == 'true' and '$(TargetPlatformIdentifierWindowsPhone81)' != '' and '$(TargetPlatformVersionWindowsPhone81)' != ''"
            WarnWhenNoSDKsFound="false"
            >
       <Output TaskParameter="InstalledSDKs" ItemName="InstalledSDKLocations"/>
@@ -2336,7 +2405,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
     <Target Name="ExportWindowsMDFile"
           DependsOnTargets="Compile"
           Condition="'$(ExportWinMDFile)' == 'true'"
-          Inputs="@(IntermediateAssembly);@(DocFileItem);@(_DebugSymbolsIntermediatePath);@(ReferencePath);$(MSBuildAllProjects)"
+          Inputs="@(IntermediateAssembly);@(DocFileItem);@(_DebugSymbolsIntermediatePath);@(ReferencePathWithRefAssemblies);$(MSBuildAllProjects)"
           Outputs="$(_IntermediateWindowsMetadataPath);$(WinMDExpOutputPdb);$(WinMDOutputDocumentationFile)"
   >
 
@@ -2350,7 +2419,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
       </PropertyGroup>
 
       <WinMDExp WinMDModule="@(IntermediateAssembly)"
-                References="@(ReferencePath)"
+                References="@(ReferencePathWithRefAssemblies)"
                 DisabledWarnings="$(WinMdExpNoWarn)"
                 InputDocumentationFile="@(DocFileItem)"
                 OutputDocumentationFile="$(WinMDOutputDocumentationFile)"
@@ -2798,7 +2867,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
     -->
   <PropertyGroup>
     <ResGenDependsOn>ResolveAssemblyReferences;SplitResourcesByCulture;BeforeResGen;CoreResGen;AfterResGen</ResGenDependsOn>
-    <CoreResGenDependsOn></CoreResGenDependsOn>
+    <CoreResGenDependsOn>FindReferenceAssembliesForReferences</CoreResGenDependsOn>
     <UseSourcePath Condition="'$(UseSourcePath)'==''">true</UseSourcePath>
     <ResGenExecuteAsTool Condition="'$(ResGenExecuteAsTool)'==''">false</ResGenExecuteAsTool>
   </PropertyGroup>
@@ -2867,7 +2936,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
     <GenerateResource
         Sources="@(EmbeddedResource)"
         UseSourcePath="$(UseSourcePath)"
-        References="@(ReferencePath)"
+        References="@(ReferencePathWithRefAssemblies)"
         AdditionalInputs="$(MSBuildAllProjects)"
         NeverLockTypeAssemblies="$(GenerateResourceNeverLockTypeAssemblies)"
         StateFile="$(IntermediateOutputPath)$(MSBuildProjectFile).GenerateResource.Cache"
@@ -2967,7 +3036,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
       Name="CompileLicxFiles"
       Condition="'@(_LicxFile)'!=''"
       DependsOnTargets="$(CompileLicxFilesDependsOn)"
-      Inputs="$(MSBuildAllProjects);@(_LicxFile);@(ReferencePath);@(ReferenceDependencyPaths)"
+      Inputs="$(MSBuildAllProjects);@(_LicxFile);@(ReferencePathWithRefAssemblies);@(ReferenceDependencyPaths)"
       Outputs="$(IntermediateOutputPath)$(TargetFileName).licenses">
 
     <PropertyGroup>
@@ -2979,7 +3048,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
         LicenseTarget="$(TargetFileName)"
         OutputDirectory="$(IntermediateOutputPath)"
         OutputLicense="$(IntermediateOutputPath)$(TargetFileName).licenses"
-        ReferencedAssemblies="@(ReferencePath);@(ReferenceDependencyPaths)"
+        ReferencedAssemblies="@(ReferencePathWithRefAssemblies);@(ReferenceDependencyPaths)"
         NoLogo="$(NoLogo)"
         ToolPath="$(LCToolPath)"
         SdkToolsPath="$(TargetFrameworkSDKToolsDirectory)"
@@ -3064,6 +3133,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
       ResolveReferences;
       ResolveKeySource;
       SetWin32ManifestProperties;
+      FindReferenceAssembliesForReferences;
       _GenerateCompileInputs;
       BeforeCompile;
       _TimeStampBeforeCompile;
@@ -3236,8 +3306,8 @@ Copyright (C) Microsoft Corporation. All rights reserved.
   <Target Name="_GenerateCompileDependencyCache" DependsOnTargets="ResolveAssemblyReferences">
     <ItemGroup>
       <CustomAdditionalCompileInputs Include="$(IntermediateOutputPath)$(MSBuildProjectFile).CoreCompileInputs.cache" />
-      <CoreCompileCache Include="@(Compile->'%(FullPath)')" />
-      <CoreCompileCache Include="@(ReferencePath->'%(FullPath)')" />
+      <CoreCompileCache Include="@(Compile)" />
+      <CoreCompileCache Include="@(ReferencePath)" />
     </ItemGroup>
 
     <Hash ItemsToHash="@(CoreCompileCache)">
@@ -4007,6 +4077,18 @@ Copyright (C) Microsoft Corporation. All rights reserved.
 
     </Copy>
 
+    <!-- Copy the reference assembly build product (.dll or .exe). -->
+    <CopyRefAssembly
+        SourcePath="@(IntermediateRefAssembly)"
+        DestinationPath="$(TargetRefPath)"
+        Condition="'$(ProduceReferenceAssembly)' == 'true' and '$(CopyBuildOutputToOutputDirectory)' == 'true' and '$(SkipCopyBuildProduct)' != 'true'"
+            >
+
+      <Output TaskParameter="DestinationPath" ItemName="ReferenceAssembly"/>
+      <Output TaskParameter="DestinationPath" ItemName="FileWrites"/>
+
+    </CopyRefAssembly>
+
     <Message Importance="High" Text="$(MSBuildProjectName) -&gt; @(MainAssembly->'%(FullPath)')" Condition="'$(CopyBuildOutputToOutputDirectory)' == 'true' and '$(SkipCopyBuildProduct)'!='true'" />
 
     <!-- Copy the additional modules. -->
@@ -4162,8 +4244,17 @@ Copyright (C) Microsoft Corporation. All rights reserved.
             >
 
       <Output TaskParameter="DestinationFiles" ItemName="FileWritesShareable"/>
+      <Output TaskParameter="CopiedFiles" ItemName="ReferencesCopiedInThisBuild"/>
 
     </Copy>
+
+    <!-- If this project produces reference assemblies *and* copied (possibly transitive)
+         references on this build, subsequent builds of projects that depend on it must
+         not be considered up to date, so touch this marker file that is considered an
+         input to projects that reference this one. -->
+    <Touch Files="@(CopyUpToDateMarker)"
+           AlwaysCreate="true"
+           Condition="'@(ReferencesCopiedInThisBuild)' != ''" />
 
   </Target>
 
@@ -4468,6 +4559,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
     <!--Record the main compile outputs.-->
     <ItemGroup>
       <FileWrites Include="@(IntermediateAssembly)" Condition="Exists('@(IntermediateAssembly)')"/>
+      <FileWrites Include="@(IntermediateRefAssembly)" Condition="'$(ProduceReferenceAssembly)' == 'true' and Exists('@(IntermediateRefAssembly)')"/>
     </ItemGroup>
 
     <!-- Record the .xml if one was produced. -->
@@ -5411,7 +5503,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
 
     <ItemGroup>
       <SatelliteDllsProjectOutputGroupOutputIntermediate Include="$(IntermediateOutputPath)%(EmbeddedResource.Culture)\$(TargetName).resources.dll"
-                                                         Condition="'%(WithCulture)' == 'true'">
+                                                         Condition="'%(EmbeddedResource.WithCulture)' == 'true'">
         <TargetPath>%(EmbeddedResource.Culture)\$(TargetName).resources.dll</TargetPath>
         <Culture>%(EmbeddedResource.Culture)</Culture>
       </SatelliteDllsProjectOutputGroupOutputIntermediate>
@@ -5420,7 +5512,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
     <!-- Convert intermediate items into final items; this way we can get the full path for each item. -->
     <ItemGroup>
       <SatelliteDllsProjectOutputGroupOutput Include="@(SatelliteDllsProjectOutputGroupOutputIntermediate->'%(FullPath)')">
-        <FinalOutputPath>$(TargetDir)%(SatelliteDllsProjectOutputGroupOutputIntermediate.TargetPath)</FinalOutputPath>
+        <FinalOutputPath Condition=" '%(SatelliteDllsProjectOutputGroupOutputIntermediate.FinalOutputPath)' == '' ">$(TargetDir)%(SatelliteDllsProjectOutputGroupOutputIntermediate.TargetPath)</FinalOutputPath>
         <!-- For compatibility with 2.0 -->
         <OriginalItemSpec>%(SatelliteDllsProjectOutputGroupOutputIntermediate.Identity)</OriginalItemSpec>
       </SatelliteDllsProjectOutputGroupOutput>

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -11,6 +12,7 @@ using System.Runtime.Versioning;
 
 using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
+using Microsoft.Build.Tasks.AssemblyDependency;
 using Microsoft.Build.Utilities;
 #if (!STANDALONEBUILD)
 using Microsoft.Internal.Performance;
@@ -42,7 +44,7 @@ namespace Microsoft.Build.Tasks
         private Dictionary<AssemblyNameExtension, Reference> _references = new Dictionary<AssemblyNameExtension, Reference>(AssemblyNameComparer.GenericComparer);
 
         /// <summary>The table of remapped assemblies. Used for Unification.</summary>
-        private DependentAssembly[] _remappedAssemblies = new DependentAssembly[0];
+        private DependentAssembly[] _remappedAssemblies = Array.Empty<DependentAssembly>();
         /// <summary>If true, then search for dependencies.</summary>
         private bool _findDependencies = true;
         /// <summary>
@@ -159,6 +161,8 @@ namespace Microsoft.Build.Tasks
         /// </summary>
         private WarnOrErrorOnTargetArchitectureMismatchBehavior _warnOrErrorOnTargetArchitectureMismatch = WarnOrErrorOnTargetArchitectureMismatchBehavior.Warning;
 
+        private readonly ConcurrentDictionary<string, AssemblyMetadata> _assemblyMetadataCache;
+
         /// <summary>
         /// When we exclude an assembly from resolution because it is part of out exclusion list we need to let the user know why this is. 
         /// There can be a number of reasons each for un-resolving a reference, these reasons are encapsulated by a different black list. We need to log a specific message 
@@ -178,7 +182,7 @@ namespace Microsoft.Build.Tasks
         /// </summary>
         /// <param name="findDependencies">If true, then search for dependencies.</param>
         /// <param name="findSatellites">If true, then search for satellite files.</param>
-        /// <param name="findSerializatoinAssemblies">If true, then search for serialization assembly files.</param>
+        /// <param name="findSerializationAssemblies">If true, then search for serialization assembly files.</param>
         /// <param name="findRelatedFiles">If true, then search for related files.</param>
         /// <param name="searchPaths">Paths to search for dependent assemblies on.</param>
         /// <param name="candidateAssemblyFiles">List of literal assembly file names to be considered when SearchPaths has {CandidateAssemblyFiles}.</param>
@@ -193,6 +197,7 @@ namespace Microsoft.Build.Tasks
         /// <param name="getAssemblyMetadata">Delegate used for finding dependencies of a file.</param>
         /// <param name="getRegistrySubKeyNames">Used to get registry subkey names.</param>
         /// <param name="getRegistrySubKeyDefaultValue">Used to get registry default values.</param>
+        /// <param name="assemblyMetadataCache">Cache of metadata already read from paths.</param>
         internal ReferenceTable
         (
             IBuildEngine buildEngine,
@@ -232,8 +237,8 @@ namespace Microsoft.Build.Tasks
             ReadMachineTypeFromPEHeader readMachineTypeFromPEHeader,
             WarnOrErrorOnTargetArchitectureMismatchBehavior warnOrErrorOnTargetArchitectureMismatch,
             bool ignoreFrameworkAttributeVersionMismatch,
-            bool unresolveFrameworkAssembliesFromHigherFrameworks
-        )
+            bool unresolveFrameworkAssembliesFromHigherFrameworks,
+            ConcurrentDictionary<string, AssemblyMetadata> assemblyMetadataCache)
         {
             _buildEngine = buildEngine;
             _log = log;
@@ -266,6 +271,7 @@ namespace Microsoft.Build.Tasks
             _readMachineTypeFromPEHeader = readMachineTypeFromPEHeader;
             _warnOrErrorOnTargetArchitectureMismatch = warnOrErrorOnTargetArchitectureMismatch;
             _ignoreFrameworkAttributeVersionMismatch = ignoreFrameworkAttributeVersionMismatch;
+            _assemblyMetadataCache = assemblyMetadataCache;
 
             // Set condition for when to check assembly version against the target framework version 
             _checkAssemblyVersionAgainstTargetFrameworkVersion = unresolveFrameworkAssembliesFromHigherFrameworks || ((_projectTargetFramework ?? ReferenceTable.s_targetFrameworkVersion_40) <= ReferenceTable.s_targetFrameworkVersion_40);
@@ -1006,6 +1012,7 @@ namespace Microsoft.Build.Tasks
             _getAssemblyMetadata
             (
                 reference.FullPath,
+                _assemblyMetadataCache,
                 out dependentAssemblies,
                 out scatterFiles,
                 out frameworkName
@@ -1013,31 +1020,28 @@ namespace Microsoft.Build.Tasks
 
             reference.FrameworkNameAttribute = frameworkName;
 
-            List<AssemblyNameExtension> dependencies = new List<AssemblyNameExtension>();
+            List<AssemblyNameExtension> dependencies = new List<AssemblyNameExtension>(dependentAssemblies?.Length ?? 0);
 
             if (dependentAssemblies != null && dependentAssemblies.Length > 0)
             {
                 // Re-map immediately so that to the sytem we actually got the remapped version when reading the manifest.
                 for (int i = 0; i < dependentAssemblies.Length; i++)
                 {
-                    if (_installedAssemblies != null)
+                    // This will return a clone of the remapped assemblyNameExtension so its ok to party on it.
+                    AssemblyNameExtension remappedExtension = _installedAssemblies?.RemapAssemblyExtension(dependentAssemblies[i]);
+                    if (remappedExtension != null)
                     {
-                        // This will return a clone of the remapped assemblyNameExtension so its ok to party on it.
-                        AssemblyNameExtension remappedExtension = _installedAssemblies.RemapAssemblyExtension(dependentAssemblies[i]);
-                        if (remappedExtension != null)
+                        AssemblyNameExtension originalExtension = dependentAssemblies[i];
+                        AssemblyNameExtension existingExtension = dependencies.Find(x => x.Equals(remappedExtension));
+                        if (existingExtension != null)
                         {
-                            AssemblyNameExtension originalExtension = dependentAssemblies[i];
-                            AssemblyNameExtension existingExtension = dependencies.Find(x => x.Equals(remappedExtension));
-                            if (existingExtension != null)
-                            {
-                                existingExtension.AddRemappedAssemblyName(originalExtension.CloneImmutable());
-                                continue;
-                            }
-                            else
-                            {
-                                dependentAssemblies[i] = remappedExtension;
-                                dependentAssemblies[i].AddRemappedAssemblyName(originalExtension.CloneImmutable());
-                            }
+                            existingExtension.AddRemappedAssemblyName(originalExtension.CloneImmutable());
+                            continue;
+                        }
+                        else
+                        {
+                            dependentAssemblies[i] = remappedExtension;
+                            dependentAssemblies[i].AddRemappedAssemblyName(originalExtension.CloneImmutable());
                         }
                     }
 
@@ -1045,7 +1049,7 @@ namespace Microsoft.Build.Tasks
                     // We will remove the dependency to mscorlib from the list of dependencies so it is not used for resolution or unification.
                     bool isMscorlib = IsPseudoAssembly(dependentAssemblies[i].Name);
 
-                    if (!isMscorlib || (isMscorlib && dependentAssemblies[i].Version.Major != 255))
+                    if (!isMscorlib || dependentAssemblies[i].Version.Major != 255)
                     {
                         dependencies.Add(dependentAssemblies[i]);
                     }
@@ -1070,14 +1074,9 @@ namespace Microsoft.Build.Tasks
         {
             foreach (AssemblyNameExtension preUnificationAssemblyName in preUnificationAssemblyNames)
             {
-                string name = preUnificationAssemblyName.Name;
                 // First, unify the assembly name so that we're dealing with the right version.
                 // Not AssemblyNameExtension because we're going to write to it.
-#if FEATURE_ASSEMBLYNAME_CLONE
-                AssemblyNameExtension dependentAssembly = new AssemblyNameExtension((AssemblyName)preUnificationAssemblyName.AssemblyName.Clone());
-#else
-                AssemblyNameExtension dependentAssembly = new AssemblyNameExtension(new AssemblyName(preUnificationAssemblyName.AssemblyName.FullName));
-#endif
+                AssemblyNameExtension dependentAssembly = new AssemblyNameExtension(preUnificationAssemblyName.AssemblyName.CloneIfPossible());
 
                 Version unifiedVersion;
                 bool isPrerequisite;
@@ -1883,11 +1882,7 @@ namespace Microsoft.Build.Tasks
                 byte[] pkt = assemblyName.GetPublicKeyToken();
                 if (pkt != null && pkt.Length > 0)
                 {
-#if FEATURE_ASSEMBLYNAME_CLONE
-                    AssemblyName baseKey = (AssemblyName)assemblyName.AssemblyName.Clone();
-#else
-                    AssemblyName baseKey = new AssemblyName(assemblyName.AssemblyName.FullName);
-#endif
+                    AssemblyName baseKey = assemblyName.AssemblyName.CloneIfPossible();
                     Version version = baseKey.Version;
                     baseKey.Version = null;
                     string key = baseKey.ToString();
@@ -2377,11 +2372,7 @@ namespace Microsoft.Build.Tasks
                 foreach (DependentAssembly remappedAssembly in _remappedAssemblies)
                 {
                     // First, exclude anything without the simple name match
-#if FEATURE_ASSEMBLYNAME_CLONE
-                    AssemblyNameExtension comparisonAssembly = new AssemblyNameExtension((AssemblyName)remappedAssembly.PartialAssemblyName.Clone());
-#else
-                    AssemblyNameExtension comparisonAssembly = new AssemblyNameExtension(new AssemblyName(remappedAssembly.PartialAssemblyName.FullName));
-#endif
+                    AssemblyNameExtension comparisonAssembly = new AssemblyNameExtension(remappedAssembly.PartialAssemblyName.CloneIfPossible());
                     if (assemblyName.CompareBaseNameTo(comparisonAssembly) == 0)
                     {
                         // Comparison assembly is a partial name. Give it our version.
@@ -2450,13 +2441,13 @@ namespace Microsoft.Build.Tasks
             out ITaskItem[] copyLocalFiles
         )
         {
-            primaryFiles = new ITaskItem[0];
-            dependencyFiles = new ITaskItem[0];
-            relatedFiles = new ITaskItem[0];
-            satelliteFiles = new ITaskItem[0];
-            serializationAssemblyFiles = new ITaskItem[0];
-            scatterFiles = new ITaskItem[0];
-            copyLocalFiles = new ITaskItem[0];
+            primaryFiles = Array.Empty<ITaskItem>();
+            dependencyFiles = Array.Empty<ITaskItem>();
+            relatedFiles = Array.Empty<ITaskItem>();
+            satelliteFiles = Array.Empty<ITaskItem>();
+            serializationAssemblyFiles = Array.Empty<ITaskItem>();
+            scatterFiles = Array.Empty<ITaskItem>();
+            copyLocalFiles = Array.Empty<ITaskItem>();
 
             ArrayList primaryItems = new ArrayList();
             ArrayList dependencyItems = new ArrayList();
@@ -2527,7 +2518,7 @@ namespace Microsoft.Build.Tasks
             scatterFiles = (ITaskItem[])scatterItems.ToArray(typeof(ITaskItem));
 
             // Sort for stable outputs. (These came from a hashtable, which as undefined enumeration order.)
-            Array.Sort(primaryFiles, TaskItemSpecFilenameComparer.comparer);
+            Array.Sort(primaryFiles, TaskItemSpecFilenameComparer.Comparer);
 
             // Find the copy-local items.
             FindCopyLocalItems(primaryFiles, copyLocalItems);

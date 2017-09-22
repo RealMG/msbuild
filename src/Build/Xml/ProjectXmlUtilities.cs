@@ -45,7 +45,6 @@ namespace Microsoft.Build.Internal
 
                     case XmlNodeType.Element:
                         XmlElementWithLocation childElement = (XmlElementWithLocation)child;
-                        VerifyThrowProjectValidNamespace(childElement);
                         children.Add(childElement);
                         break;
 
@@ -94,19 +93,6 @@ namespace Microsoft.Build.Internal
         internal static void ThrowProjectInvalidChildElement(string name, string parentName, ElementLocation location)
         {
             ProjectErrorUtilities.ThrowInvalidProject(location, "UnrecognizedChildElement", name, parentName);
-        }
-
-        /// <summary>
-        /// Verifies that an element is in the MSBuild namespace, otherwise throws an InvalidProjectFileException.
-        /// </summary>
-        internal static void VerifyThrowProjectValidNamespace(XmlElementWithLocation element)
-        {
-            // If a namespace was specified it must be the default MSBuild namespace.
-            if (!VerifyValidProjectNamespace(element))
-            {
-                ProjectErrorUtilities.ThrowInvalidProject(element.Location,
-                    "CustomNamespaceNotAllowedOnThisChildElement", element.Name, element.ParentNode?.Name);
-            }
         }
 
         /// <summary>
@@ -267,12 +253,12 @@ namespace Microsoft.Build.Internal
         /// <summary>
         /// Returns the value of the attribute. 
         /// If the attribute is not present, returns either null or an empty string, depending on the value 
-        /// of returnNullForNonexistentAttributes.
+        /// of nullIfNotExists.
         /// </summary>
-        internal static string GetAttributeValue(XmlElementWithLocation element, string attributeName, bool returnNullForNonexistentAttributes)
+        internal static string GetAttributeValue(XmlElementWithLocation element, string attributeName, bool nullIfNotExists)
         {
             XmlAttributeWithLocation attribute = (XmlAttributeWithLocation)element.GetAttributeNode(attributeName);
-            return GetAttributeValue(attribute, returnNullForNonexistentAttributes);
+            return GetAttributeValue(attribute, nullIfNotExists);
         }
     }
 }

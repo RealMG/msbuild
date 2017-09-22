@@ -1952,11 +1952,6 @@ Utilization:          {0} Average Utilization: {1:###.0}</source>
         <target state="translated">MSB4229: 值“{0}”对 Sdk 规范无效。此属性应该是以分号分隔的Sdk-name/minimum-version 对（用正斜杠分隔）的列表。</target>
         <note>{StrBegin="MSB4229: "}</note>
       </trans-unit>
-      <trans-unit id="TaskFactoryNotSupportedFailure">
-        <source>MSB4801: The task factory "{0}" could not be loaded because this version of MSBuild does not support it.</source>
-        <target state="translated">MSB4801: 无法加载任务工厂“{0}”，因为此版本的 MSBuild 不支持它。</target>
-        <note>{StrBegin="MSB4801: "}</note>
-      </trans-unit>
       <trans-unit id="TaskInstantiationFailureNotSupported">
         <source>MSB4802: The "{0}" task could not be instantiated from "{1}". This version of MSBuild does not support {2}.</source>
         <target state="translated">MSB4802: 无法从“{1}”实例化“{0}”任务。此版本的 MSBuild 不支持 {2}。</target>
@@ -1981,6 +1976,76 @@ Utilization:          {0} Average Utilization: {1:###.0}</source>
         <source>MSB4231: ProjectRootElement can't reload if it contains unsaved changes.</source>
         <target state="translated">MSB4231: 如果 ProjectRootElement 包含未保存的更改，则无法重新加载。</target>
         <note>{StrBegin="MSB4231: "}</note>
+      </trans-unit>
+      <trans-unit id="EvaluationStarted">
+        <source>Evaluation started ("{0}")</source>
+        <target state="translated">评估开始(“{0}”)</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="EvaluationFinished">
+        <source>Evaluation finished ("{0}")</source>
+        <target state="translated">评估完毕(“{0}”)</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="InvalidBinaryLoggerParameters">
+        <source>MSB4234: Invalid binary logger parameter(s): "{0}". Expected: ProjectImports={{None,Embed,ZipFile}} and/or [LogFile=]filePath.binlog (the log file name or path, must have the ".binlog" extension).</source>
+        <target state="translated">MSB4234: 无效的二进制记录器参数: “{0}”。 预期应为: ProjectImports={{None,Embed,ZipFile}} 和/或 [LogFile=]filePath.binlog (日志文件名称或路径必须包含“.binlog” 扩展名)。</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="IncludeRemoveOrUpdate">
+        <source>MSB4232: Items that are outside Target elements must have one of the following operations: Include, Update, or Remove.</source>
+        <target state="translated">MSB4232: Target 元素之外的项目必须具有以下操作之一: Include、Update 或 Remove。</target>
+        <note>{StrBegin="MSB4232: "} Target, Include, Update, and Remove should not be localized and their casing should not be changed</note>
+      </trans-unit>
+      <trans-unit id="PropertyReassignment">
+        <source>Property reassignment: $({0})="{1}" (previous value: "{2}") at {3}</source>
+        <target state="translated">在 {3} 处重新分配属性: $({0})=“{1}”(先前值:“{2}”)</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="CouldNotResolveSdk">
+        <source>MSB4236: The SDK '{0}' specified could not be found.</source>
+        <target state="translated">MSB4236: 找不到指定的 SDK“{0}”。</target>
+        <note>{StrBegin="MSB4236: "}</note>
+      </trans-unit>
+      <trans-unit id="CouldNotLoadSdkResolver">
+        <source>MSB4237: An SDK resolver was found but could not be loaded. Error: {0}.</source>
+        <target state="translated">MSB4237: 找到了 SDK 解析程序，但其未加载。错误: {0}。</target>
+        <note>{StrBegin="MSB4237: "}</note>
+      </trans-unit>
+      <trans-unit id="InvalidSdkElementName">
+        <source>MSB4238: The name "{0}" is not a valid SDK name.</source>
+        <target state="translated">MSB4238: 名称“{0}”不是有效的 SDK 名称。</target>
+        <note>{StrBegin="MSB4238: "}</note>
+      </trans-unit>
+      <trans-unit id="UnsupportedLogFileFormat">
+        <source>MSB4235: The log file format version is {0}, whereas this version of MSBuild only supports versions up to {1}.</source>
+        <target state="translated">MSB4235: 日志文件格式版本为 {0}，但此版本的 MSBuild 仅支持 {1} 及更低版本。</target>
+        <note>{StrBegin="MSB4235: "}</note>
+      </trans-unit>
+      <trans-unit id="ProjectEvaluationPerformanceSummary">
+        <source>Project Evaluation Performance Summary:</source>
+        <target state="translated">项目评估性能摘要:</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="ProjectImportSkippedFalseCondition">
+        <source>Project "{0}" was not imported by "{1}" at ({2},{3}), due to false condition; ({4}) was evaluated as ({5}).</source>
+        <target state="translated">由于 false 条件，项目“{0}” 不由 ({2}、{3}) 处的“{1}”导入， ({4}) 的计算结果为 ({5}).</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="ProjectImportSkippedNoMatches">
+        <source>Project "{0}" was not imported by "{1}" at ({2},{3}), due to no matching files.</source>
+        <target state="translated">由于没有匹配的文件，项目“{0}” 不由 ({2}、{3}) 处的“{1}”导入。</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="ProjectImportSkippedEmptyFile">
+        <source>Project "{0}" was not imported by "{1}" at ({2},{3}), due to the file being empty.</source>
+        <target state="translated">由于文件为空，项目“{0}”不由 ({2}、{3}) 处的“{1}”导入。</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="ProjectImported">
+        <source>Importing project "{0}" into project "{1}" at ({2},{3}).</source>
+        <target state="translated">正在将项目“{0}”导入 ({2}、{3}) 处的项目“{1}”。</target>
+        <note />
       </trans-unit>
     </body>
   </file>

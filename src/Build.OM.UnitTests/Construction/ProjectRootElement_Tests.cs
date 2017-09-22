@@ -18,6 +18,7 @@ using System.Text;
 using System.Threading;
 using System.Xml;
 using Microsoft.Build.Construction;
+using Microsoft.Build.Engine.UnitTests;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Shared;
 
@@ -32,11 +33,16 @@ namespace Microsoft.Build.UnitTests.OM.Construction
     /// </summary>
     public class ProjectRootElement_Tests
     {
-        private const string SimpleProject = 
+        private const string SimpleProject =
 @"<Project xmlns=`msbuildnamespace`>
 
   <PropertyGroup>
     <P>property value</P>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <ProjectFile>$(MSBuildProjectFullPath)</ProjectFile>
+    <ThisFile>$(MSBuildThisFileFullPath)</ThisFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -57,6 +63,10 @@ namespace Microsoft.Build.UnitTests.OM.Construction
     <PropertyGroup/>
     <PropertyGroup>
         <r>r1</r>
+    </PropertyGroup>
+    <PropertyGroup>
+      <ProjectFile>$(MSBuildProjectFullPath)</ProjectFile>
+      <ThisFile>$(MSBuildThisFileFullPath)</ThisFile>
     </PropertyGroup>
     <Choose>
         <When Condition=""true"">
@@ -84,7 +94,7 @@ namespace Microsoft.Build.UnitTests.OM.Construction
             </Choose>
         </Otherwise>
     </Choose>
-    <Import Project='$(MSBuildToolsPath)\microsoft.csharp.targets'/>
+    <Import Project='$(MSBuildToolsPath)\Microsoft.CSharp.targets'/>
 </Project>";
 
         /// <summary>
@@ -103,7 +113,7 @@ namespace Microsoft.Build.UnitTests.OM.Construction
         }
 
         /// <summary>
-        /// Set defaulttargets
+        /// Set default targets
         /// </summary>
         [Fact]
         public void SetDefaultTargets()
@@ -744,7 +754,7 @@ namespace Microsoft.Build.UnitTests.OM.Construction
                 VerifyLoadedProjectHasEncoding(projectFullPath, Encoding.Unicode);
 
                 // We don't test ASCII, since there is no byte order mark for it,
-                // and the XmlReader will legitimately decide to intrepret it as UTF8,
+                // and the XmlReader will legitimately decide to interpret it as UTF8,
                 // which would fail the test although it's a reasonable assumption
                 // when no xml declaration is present.
                 ////VerifyLoadedProjectHasEncoding(projectFullPath, Encoding.ASCII);
@@ -1306,9 +1316,10 @@ Project(""{";
 <Project xmlns = 'msbuildnamespace'>
 </Project>";
 
-            using (var projectFiles = new Helpers.TestProjectWithFiles("", new[] {"build.proj"}))
+            using (var env = TestEnvironment.Create())
             using (var projectCollection = new ProjectCollection())
             {
+                var projectFiles = env.CreateTestProjectWithFiles("", new[] { "build.proj" });
                 var projectFile = projectFiles.CreatedFiles.First();
 
                 var projectXml = ProjectRootElement.Create(
@@ -1329,7 +1340,7 @@ Project(""{";
                 Assert.False(xml2.PreserveFormatting);
 
                 Assert.NotNull(xml0);
-                
+
                 Assert.Same(xml0, xml1);
                 Assert.Same(xml0, xml2);
             }
@@ -1344,8 +1355,9 @@ Project(""{";
         [InlineData(false, null, false)]
         public void ReloadCanSpecifyPreserveFormatting(bool initialPreserveFormatting, bool? reloadShouldPreserveFormatting, bool expectedFormattingAfterReload)
         {
-            using (var testFiles = new Helpers.TestProjectWithFiles("", new[] { "build.proj" }))
+            using (var env = TestEnvironment.Create())
             {
+                var testFiles = env.CreateTestProjectWithFiles("", new[] { "build.proj" });
                 var projectFile = testFiles.CreatedFiles.First();
 
                 var projectElement = ObjectModelHelpers.CreateInMemoryProjectRootElement(SimpleProject, null, initialPreserveFormatting);
@@ -1604,10 +1616,12 @@ true, true, true)]
 
 </Project>");
 
-            using (var testFiles = new Helpers.TestProjectWithFiles("", new []{"build.proj"}))
-            using (var projectCollection1 = new ProjectCollection())
-            using (var projectCollection2 = new ProjectCollection())
+            using (var env = TestEnvironment.Create())
             {
+                var projectCollection1 = env.CreateProjectCollection().Collection;
+                var projectCollection2 = env.CreateProjectCollection().Collection;
+
+                var testFiles = env.CreateTestProjectWithFiles("", new[] { "build.proj" });
                 var projectPath = testFiles.CreatedFiles.First();
 
                 var projectElement = ObjectModelHelpers.CreateInMemoryProjectRootElement(initialProjectContents, projectCollection1, preserveFormatting: true);
@@ -1699,6 +1713,102 @@ true, true, true)]
             // reload does not mutate the project element
             AssertReload(SimpleProject, ComplexProject, false, false, false, act);
         }
+
+        [Fact]
+        public void ReloadFromMemoryWhenProjectIsInMemoryKeepsProjectFileEmpty()
+        {
+            AssertProjectFileAfterReload(
+                true,
+                true,
+                (initial, reload, actualFile) => { Assert.Equal(String.Empty, actualFile); });
+        }
+
+        [Fact]
+        public void ReloadFromMemoryWhenProjectIsInFileKeepsProjectFile()
+        {
+            AssertProjectFileAfterReload(
+                false,
+                true,
+                (initial, reload, actualFile) => { Assert.Equal(initial, actualFile); });
+        }
+
+        [Fact]
+        public void ReloadFromFileWhenProjectIsInMemorySetsProjectFile()
+        {
+            AssertProjectFileAfterReload(
+                true,
+                false,
+                (initial, reload, actualFile) => { Assert.Equal(reload, actualFile);});
+        }
+
+        [Fact]
+        public void ReloadFromFileWhenProjectIsInFileUpdatesProjectFile()
+        {
+            AssertProjectFileAfterReload(
+                false,
+                false,
+                (initial, reload, actualFile) => { Assert.Equal(reload, actualFile); });
+        }
+
+        private void AssertProjectFileAfterReload(
+            bool initialProjectFromMemory,
+            bool reloadProjectFromMemory,
+            Action<string, string, string> projectFileAssert)
+        {
+
+            using (var env = TestEnvironment.Create())
+            {
+                var projectCollection = env.CreateProjectCollection().Collection;
+
+                string initialLocation = null;
+                ProjectRootElement rootElement = null;
+
+                if (initialProjectFromMemory)
+                {
+                    rootElement = ObjectModelHelpers.CreateInMemoryProjectRootElement(SimpleProject, projectCollection);
+                }
+                else
+                {
+                    initialLocation = env.CreateFile().Path;
+                    File.WriteAllText(initialLocation, ObjectModelHelpers.CleanupFileContents(SimpleProject));
+                    rootElement = ProjectRootElement.Open(initialLocation, projectCollection);
+                }
+
+                var project = new Project(rootElement, null, null, projectCollection);
+
+                string reloadLocation = null;
+
+                if (reloadProjectFromMemory)
+                {
+                    rootElement.ReloadFrom(XmlReader.Create(new StringReader(ObjectModelHelpers.CleanupFileContents(ComplexProject))), false);
+                }
+                else
+                {
+                    reloadLocation = env.CreateFile().Path;
+                    File.WriteAllText(reloadLocation, ObjectModelHelpers.CleanupFileContents(ComplexProject));
+                    rootElement.ReloadFrom(reloadLocation, false);
+                }
+
+                project.ReevaluateIfNecessary();
+
+                projectFileAssert.Invoke(initialLocation, reloadLocation, EmptyIfNull(rootElement.FullPath));
+                projectFileAssert.Invoke(initialLocation, reloadLocation, rootElement.ProjectFileLocation.File);
+                projectFileAssert.Invoke(initialLocation, reloadLocation, rootElement.AllChildren.Last().Location.File);
+                projectFileAssert.Invoke(initialLocation, reloadLocation, project.GetPropertyValue("ProjectFile"));
+                projectFileAssert.Invoke(initialLocation, reloadLocation, project.GetPropertyValue("ThisFile"));
+
+                if (initialProjectFromMemory && reloadProjectFromMemory)
+                {
+                    Assert.Equal(NativeMethodsShared.GetCurrentDirectory(), rootElement.DirectoryPath);
+                }
+                else
+                {
+                    projectFileAssert.Invoke(Path.GetDirectoryName(initialLocation), Path.GetDirectoryName(reloadLocation), rootElement.DirectoryPath);
+                }
+            }
+        }
+
+        private static string EmptyIfNull(string aString) => aString ?? string.Empty;
 
         [Fact]
         public void ReloadThrowsOnInvalidMsBuildSyntax()
@@ -1866,7 +1976,7 @@ true, true, true)]
         }
 
         /// <summary>
-        /// Creates a project at a given path with a given encoding but without the Xml declaration, 
+        /// Creates a project at a given path with a given encoding but without the Xml declaration,
         /// and then verifies that when loaded by MSBuild, the encoding is correctly reported.
         /// </summary>
         private void VerifyLoadedProjectHasEncoding(string projectFullPath, Encoding encoding)

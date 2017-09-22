@@ -11,6 +11,7 @@ namespace Microsoft.Build.Utilities
     {
         public CommandLineBuilder() { }
         public CommandLineBuilder(bool quoteHyphensOnCommandLine) { }
+        public CommandLineBuilder(bool quoteHyphensOnCommandLine, bool useNewLineSeparator) { }
         protected System.Text.StringBuilder CommandLine { get { throw null; } }
         public int Length { get { throw null; } }
         public void AppendFileNameIfNotNull(Microsoft.Build.Framework.ITaskItem fileItem) { }
@@ -377,6 +378,7 @@ namespace Microsoft.Build.Utilities
         public string ToolPath { get { throw null; } set { } }
         public bool UseCommandProcessor { [System.Runtime.CompilerServices.CompilerGeneratedAttribute]get { throw null; } [System.Runtime.CompilerServices.CompilerGeneratedAttribute]set { } }
         public bool YieldDuringToolExecution { [System.Runtime.CompilerServices.CompilerGeneratedAttribute]get { throw null; } [System.Runtime.CompilerServices.CompilerGeneratedAttribute]set { } }
+        protected virtual string AdjustCommandsForOperatingSystem(string input) { throw null; }
         protected virtual bool CallHostObjectToExecute() { throw null; }
         public virtual void Cancel() { }
         protected void DeleteTempFile(string fileName) { }

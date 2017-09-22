@@ -349,13 +349,13 @@ namespace Microsoft.Build.BackEnd
 
             if (!condition)
             {
-                _targetResult = new TargetResult(new TaskItem[0] { }, new WorkUnitResult(WorkUnitResultCode.Skipped, WorkUnitActionCode.Continue, null));
+                _targetResult = new TargetResult(Array.Empty<TaskItem>(), new WorkUnitResult(WorkUnitResultCode.Skipped, WorkUnitActionCode.Continue, null));
                 _state = TargetEntryState.Completed;
 
                 if (!projectLoggingContext.LoggingService.OnlyLogCriticalEvents)
                 {
-                    // Expand the expression for the Log.
-                    string expanded = _expander.ExpandIntoStringAndUnescape(_target.Condition, ExpanderOptions.ExpandPropertiesAndItems, _target.ConditionLocation);
+                    // Expand the expression for the Log.  Since we know the condition evaluated to false, leave unexpandable properties in the condition so as not to cause an error
+                    string expanded = _expander.ExpandIntoStringAndUnescape(_target.Condition, ExpanderOptions.ExpandPropertiesAndItems | ExpanderOptions.LeavePropertiesUnexpandedOnError, _target.ConditionLocation);
 
                     // By design: Not building dependencies. This is what NAnt does too.
                     // NOTE: In the original code, this was logged from the target logging context.  However, the target
@@ -708,7 +708,7 @@ namespace Microsoft.Build.BackEnd
             // create a result for this target to report when it gets to the Completed state.
             if (null == _targetResult)
             {
-                _targetResult = new TargetResult(new TaskItem[] { }, new WorkUnitResult(WorkUnitResultCode.Failed, WorkUnitActionCode.Stop, null));
+                _targetResult = new TargetResult(Array.Empty<TaskItem>(), new WorkUnitResult(WorkUnitResultCode.Failed, WorkUnitActionCode.Stop, null));
             }
 
             _state = TargetEntryState.Completed;
@@ -750,6 +750,20 @@ namespace Microsoft.Build.BackEnd
         {
             ErrorUtilities.VerifyThrow(_state != TargetEntryState.Completed, "State must not be Completed. State is {0}.", _state);
             _state = TargetEntryState.ErrorExecution;
+        }
+
+        /// <summary>
+        /// This method is used by the Target Builder to indicate that a child of this target has failed and that work should not
+        /// continue in Completed / Skipped mode. We do not want to mark the state to run in ErrorExecution mode so that the
+        /// OnError targets do not run (the target was skipped due to condition so OnError targets should not run).
+        /// </summary>
+        internal void MarkForStop()
+        {
+            ErrorUtilities.VerifyThrow(_state == TargetEntryState.Completed, "State must be Completed. State is {0}.", _state);
+            ErrorUtilities.VerifyThrow(_targetResult.ResultCode == TargetResultCode.Skipped, "ResultCode must be Skipped. ResultCode is {0}.", _state);
+            ErrorUtilities.VerifyThrow(_targetResult.WorkUnitResult.ActionCode == WorkUnitActionCode.Continue, "ActionCode must be Continue. ActionCode is {0}.", _state);
+
+            _targetResult.WorkUnitResult.ActionCode = WorkUnitActionCode.Stop;
         }
 
         /// <summary>

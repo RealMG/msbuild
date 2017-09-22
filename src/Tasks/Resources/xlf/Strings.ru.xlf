@@ -2186,7 +2186,7 @@
       </trans-unit>
       <trans-unit id="SGen.InvalidPath">
         <source>MSB3473: Path for "{0}" is invalid. {1}</source>
-        <target state="translated">MSB3473: Путь для "{0}" является недопустимым.. {1}</target>
+        <target state="translated">MSB3473: Путь для "{0}" является недопустимым. {1}</target>
         <note>{StrBegin="MSB3473: "}</note>
       </trans-unit>
       <trans-unit id="SignFile.CertNotInStore">
@@ -2998,6 +2998,11 @@
         <source>(No message specified)</source>
         <target state="translated">(текст сообщения не указан)</target>
         <note />
+      </trans-unit>
+      <trans-unit id="TaskFactoryNotSupportedFailure">
+        <source>MSB4801: The task factory "{0}" is not supported on the .NET Core version of MSBuild.</source>
+        <target state="translated">MSB4801: фабрика задач "{0}" не поддерживается в версии .NET Core для MSBuild.</target>
+        <note>{StrBegin="MSB4801: "}</note>
       </trans-unit>
     </body>
   </file>

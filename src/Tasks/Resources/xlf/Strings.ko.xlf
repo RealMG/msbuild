@@ -2566,7 +2566,7 @@
       </trans-unit>
       <trans-unit id="XmlPeek.NamespacesParameterNoAttribute">
         <source>The specified Namespaces attribute does not have attribute "{0}".</source>
-        <target state="translated">지정한 Namespaces 특성에 "{0}" 특성이 없습니다..</target>
+        <target state="translated">지정한 Namespaces 특성에 "{0}" 특성이 없습니다.</target>
         <note />
       </trans-unit>
       <trans-unit id="XmlPeek.NamespacesParameterNotWellFormed">
@@ -2998,6 +2998,11 @@
         <source>(No message specified)</source>
         <target state="translated">(메시지가 지정되지 않음)</target>
         <note />
+      </trans-unit>
+      <trans-unit id="TaskFactoryNotSupportedFailure">
+        <source>MSB4801: The task factory "{0}" is not supported on the .NET Core version of MSBuild.</source>
+        <target state="translated">MSB4801: MSBuild의 .NET Core 버전에서는 "{0}" 작업 팩터리가 지원되지 않습니다.</target>
+        <note>{StrBegin="MSB4801: "}</note>
       </trans-unit>
     </body>
   </file>

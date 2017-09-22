@@ -134,11 +134,17 @@
       <Link>BackEnd\Components\RequestBuilder\IntrinsicTasks\PropertyParser.cs</Link>
       <ExcludeFromStyleCop>True</ExcludeFromStyleCop>
     </Compile>
+    <Compile Include="..\Shared\StringExtensions.cs">
+      <Link>SharedUtilities\StringExtensions.cs</Link>
+    </Compile>
     <Compile Include="..\Shared\ReadOnlyEmptyCollection.cs">
       <Link>Collections\ReadOnlyEmptyCollection.cs</Link>
     </Compile>
     <Compile Include="..\Shared\StringBuilderCache.cs">
       <ExcludeFromStyleCop>True</ExcludeFromStyleCop>
+    </Compile>
+    <Compile Include="..\Shared\Traits.cs">
+      <Link>SharedUtilities\Traits.cs</Link>
     </Compile>
     <Compile Include="..\Shared\BufferedReadStream.cs" />
     <Compile Include="..\Shared\TaskHostConfiguration.cs" />
@@ -189,7 +195,9 @@
     <Compile Include="BackEnd\Components\Caching\IRegisteredTaskObjectCache.cs" />
     <Compile Include="..\Shared\RegisteredTaskObjectCacheBase.cs" />
     <Compile Include="BackEnd\Components\Caching\RegisteredTaskObjectCache.cs" />
-    <Compile Include="BackEnd\Components\Logging\BaseLoggingContext.cs" />
+    <Compile Include="BackEnd\Components\Logging\EvaluationLoggingContext.cs" />
+    <Compile Include="BackEnd\Components\Logging\BuildLoggingContext.cs" />
+    <Compile Include="BackEnd\Components\Logging\LoggingContext.cs" />
     <Compile Include="BackEnd\Components\Logging\BuildEventArgTransportSink.cs" />
     <Compile Include="BackEnd\Components\Logging\CentralForwardingLogger.cs" />
     <Compile Include="BackEnd\Components\Logging\EventRedirectorToSink.cs" />
@@ -218,6 +226,9 @@
     <Compile Include="BackEnd\Components\Scheduler\SchedulerCircularDependencyException.cs" />
     <Compile Include="BackEnd\Components\Scheduler\ScheduleTimeRecord.cs" />
     <Compile Include="BackEnd\Components\Scheduler\SchedulingPlan.cs" />
+    <Compile Include="BackEnd\Components\SdkResolution\DefaultSdkResolver.cs" />
+    <Compile Include="BackEnd\Components\SdkResolution\SdkResolution.cs" />
+    <Compile Include="BackEnd\Components\SdkResolution\SdkResolverLoader.cs" />
     <Compile Include="BackEnd\Shared\ConfigurationMetadata.cs" />
     <Compile Include="Collections\ConcurrentQueueExtensions.cs" />
     <Compile Include="Collections\ConcurrentStackExtensions.cs" />
@@ -235,6 +246,7 @@
       <ExcludeFromStyleCop>true</ExcludeFromStyleCop>
     </Compile>
     <Compile Include="Construction\ImplicitImportLocation.cs" />
+    <Compile Include="Construction\ProjectSdkElement.cs" />
     <Compile Include="Definition\NewProjectFileOptions.cs" />
     <Compile Include="Definition\ProjectCollectionChangedEventArgs.cs" />
     <Compile Include="Definition\ProjectImportPathMatch.cs" />
@@ -351,7 +363,6 @@
     <Compile Include="Collections\OrdinalIgnoreCaseKeyedComparer.cs" />
     <Compile Include="Collections\PropertyDictionary.cs" />
     <Compile Include="..\Shared\ReadOnlyCollection.cs" />
-    <Compile Include="Collections\ReadOnlyConvertingCollection.cs" />
     <Compile Include="Collections\ReadOnlyConvertingDictionary.cs" />
     <Compile Include="Collections\Triple.cs" />
     <!-- ######################## -->
@@ -563,6 +574,7 @@
     <Compile Include="Logging\BinaryLogger\BuildEventArgsFields.cs" />
     <Compile Include="Logging\BinaryLogger\BuildEventArgsReader.cs" />
     <Compile Include="Logging\BinaryLogger\BuildEventArgsWriter.cs" />
+    <Compile Include="Logging\BinaryLogger\ProjectImportsCollector.cs" />
     <Compile Include="Logging\ConsoleLogger.cs">
       <ExcludeFromStyleCop>true</ExcludeFromStyleCop>
     </Compile>
@@ -621,9 +633,6 @@
     </Compile>
     <Compile Include="..\Shared\ReadOnlyEmptyDictionary.cs">
       <Link>SharedUtilities\ReadOnlyEmptyDictionary.cs</Link>
-    </Compile>
-    <Compile Include="..\Shared\ReadOnlyEmptyList.cs">
-      <Link>SharedUtilities\ReadOnlyEmptyList.cs</Link>
     </Compile>
     <Compile Include="..\Shared\AssemblyNameExtension.cs">
       <Link>SharedUtilities\AssemblyNameExtension.cs</Link>
@@ -764,9 +773,6 @@
     <Reference Include="System.Core" />
     <Reference Include="System.Xml" />
     <Reference Include="System.Configuration" />
-    <Reference Include="System.Runtime">
-      <HintPath>$(FrameworkPathOverride)\System.Runtime.dll</HintPath>
-    </Reference>
     <Reference Include="System.Threading.Tasks">
       <HintPath>$(FrameworkPathOverride)\System.Threading.Tasks.dll</HintPath>
     </Reference>
@@ -785,19 +791,4 @@
   <Import Project="$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), dir.targets))\dir.targets" Condition="!$(Configuration.EndsWith('MONO'))"/>
   -->
   <Import Project="..\dir.targets" />
-  <Target Name="CopyImmutableAndDataflowLocal" BeforeTargets="ResolveAssemblyReferences" AfterTargets="ResolveNuGetPackages">
-    <!-- The VSIX installer manifest references System.Collections.Immutable and System.Threading.Tasks.Dataflow
-         from the Output folder, but they won't be placed there by default because NuGet references come in as CopyLocal false.
-
-         Work around this by munging the references after NuGet emits them but before RAR.
-
-         TODO: this shouldn't be here. After moving to a better binplacing model (like "publish
-         msbuild.exe to a folder") it should be removed.
-    -->
-    <ItemGroup>
-      <Reference Condition="'%(Reference.NuGetPackageId)' == 'System.Collections.Immutable' or '%(Reference.NuGetPackageId)' == 'System.Threading.Tasks.Dataflow'">
-        <Private>true</Private>
-      </Reference>
-    </ItemGroup>
-  </Target>
 </Project>

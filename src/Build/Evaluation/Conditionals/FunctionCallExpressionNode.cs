@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-
 using Microsoft.Build.Shared;
 
 using TaskItem = Microsoft.Build.Execution.ProjectItemInstance.TaskItem;
@@ -38,20 +37,26 @@ namespace Microsoft.Build.Evaluation
                 // Check we only have one argument
                 VerifyArgumentCount(1, state);
 
-                // Expand properties and items, and verify the result is an appropriate scalar
-                string expandedValue = ExpandArgumentForScalarParameter("exists", (GenericExpressionNode)_arguments[0], state);
-
-                if (String.IsNullOrEmpty(expandedValue))
-                {
-                    return false;
-                }
-
                 try
                 {
-                    if (state.EvaluationDirectory != null && !Path.IsPathRooted(expandedValue))
+                    // Expand the items and use DefaultIfEmpty in case there is nothing returned
+                    // Then check if everything is not null (because the list was empty), not
+                    // already loaded into the cache, and exists
+                    var list = ExpandArgumentAsFileList((GenericExpressionNode) _arguments[0], state);
+                    if (list == null)
                     {
-                        expandedValue = Path.GetFullPath(Path.Combine(state.EvaluationDirectory, expandedValue));
+                        return false;
                     }
+
+                    foreach (var item in list)
+                    {
+                        if (item == null || !(state.LoadedProjectsCache?.TryGet(item) != null || FileUtilities.FileOrDirectoryExistsNoThrow(item)))
+                        {
+                            return false;
+                        }
+                    }
+
+                    return true;
                 }
                 catch (Exception e) when (ExceptionHandling.IsIoRelatedException(e))
                 {
@@ -64,15 +69,6 @@ namespace Microsoft.Build.Evaluation
 
                     return false;
                 }
-
-                if (state.LoadedProjectsCache != null && state.LoadedProjectsCache.TryGet(expandedValue) != null)
-                {
-                    return true;
-                }
-
-                bool exists = FileUtilities.FileOrDirectoryExistsNoThrow(expandedValue);
-
-                return exists;
             }
             else if (String.Compare(_functionName, "HasTrailingSlash", StringComparison.OrdinalIgnoreCase) == 0)
             {
@@ -128,9 +124,7 @@ namespace Microsoft.Build.Evaluation
                 argument = FileUtilities.FixFilePath(argument);
             }
 
-            IList<TaskItem> items;
-
-            items = state.ExpandIntoTaskItems(argument);
+            IList<TaskItem> items = state.ExpandIntoTaskItems(argument);
 
             string expandedValue = String.Empty;
 
@@ -152,6 +146,42 @@ namespace Microsoft.Build.Evaluation
             }
 
             return expandedValue;
+        }
+
+        private List<string> ExpandArgumentAsFileList(GenericExpressionNode argumentNode, ConditionEvaluator.IConditionEvaluationState state, bool isFilePath = true)
+        {
+            string argument = argumentNode.GetUnexpandedValue(state);
+
+            // Fix path before expansion
+            if (isFilePath)
+            {
+                argument = FileUtilities.FixFilePath(argument);
+            }
+
+
+            IList<TaskItem> expanded = state.ExpandIntoTaskItems(argument);
+            var expandedCount = expanded.Count;
+
+            if (expandedCount == 0)
+            {
+                return null;
+            }
+
+            var list = new List<string>(capacity: expandedCount);
+            for (var i = 0; i < expandedCount; i++)
+            {
+                var item = expanded[i];
+                if (state.EvaluationDirectory != null && !Path.IsPathRooted(item.ItemSpec))
+                {
+                    list.Add(Path.GetFullPath(Path.Combine(state.EvaluationDirectory, item.ItemSpec)));
+                }
+                else
+                {
+                    list.Add(item.ItemSpec);
+                }
+            }
+
+            return list;
         }
 
         /// <summary>

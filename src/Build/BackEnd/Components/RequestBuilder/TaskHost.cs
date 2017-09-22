@@ -807,7 +807,7 @@ namespace Microsoft.Build.BackEnd
             if (!NodePacketTranslator.IsSerializable(e))
 #endif
             {
-                _taskLoggingContext.LogWarning(new BuildEventFileInfo(string.Empty), null, "ExpectedEventToBeSerializable", e.GetType().Name);
+                _taskLoggingContext.LogWarning(null, new BuildEventFileInfo(string.Empty), "ExpectedEventToBeSerializable", e.GetType().Name);
                 return false;
             }
 
@@ -892,8 +892,8 @@ namespace Microsoft.Build.BackEnd
                         (
                         projectFileNames,
                         propertyDictionaries,
-                        toolsVersion ?? new string[] { },
-                        targetNames ?? new string[] { },
+                        toolsVersion ?? Array.Empty<string>(),
+                        targetNames ?? Array.Empty<string>(),
                         true
                         );
 

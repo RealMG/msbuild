@@ -7,10 +7,21 @@ if "%1"=="" goto doneParsingArguments
 if /i "%1"=="--scope" set SCOPE=%2&& shift && shift && goto parseArguments
 if /i "%1"=="--target" set TARGET=%2&& shift && shift && goto parseArguments
 if /i "%1"=="--host" set HOST=%2&& shift && shift && goto parseArguments
+if /i "%1"=="--config" set BASE_CONFIG=%2&& shift && shift && goto parseArguments
 if /i "%1"=="--build-only" set BUILD_ONLY=true&& shift && goto parseArguments
 if /i "%1"=="--bootstrap-only" set BOOTSTRAP_ONLY=true&& shift && goto parseArguments
 if /i "%1"=="--localized-build" set LOCALIZED_BUILD=true&& shift && goto parseArguments
 if /i "%1"=="--sync-xlf" set SYNC_XLF=true&& shift && goto parseArguments
+
+if /i "%1"=="--windows-core-localized-job" (
+    CALL "!_originalScript!" --target Full --scope Compile --build-only --localized-build
+    IF ERRORLEVEL 1 GOTO :error
+    CALL "!_originalScript!" --target CoreCLR --scope test --localized-Build
+    IF ERRORLEVEL 1 GOTO :error
+    CALL "msbuild" build/NugetPackages/CreateNuGetPackages.proj
+    IF ERRORLEVEL 1 GOTO :error
+    EXIT /B 0
+    )
 
 :: Unknown parameters
 goto :usage
@@ -30,11 +41,15 @@ if not defined TARGET (
     set TARGET=Full
 )
 
+if not defined BASE_CONFIG (
+    set BASE_CONFIG=Debug
+)
+
 set BUILD_CONFIGURATION=
 if /i "%TARGET%"=="CoreCLR" (
-    set BUILD_CONFIGURATION=Debug-NetCore
+    set BUILD_CONFIGURATION=%BASE_CONFIG%-NetCore
 ) else if /i "%TARGET%"=="Full" (
-    set BUILD_CONFIGURATION=Debug
+    set BUILD_CONFIGURATION=%BASE_CONFIG%
 ) else if /i "%TARGET%"=="All" (
     SET _originalArguments=%*
     CALL "!_originalScript!" !_originalArguments:All=Full!
@@ -45,8 +60,10 @@ if /i "%TARGET%"=="CoreCLR" (
 ) else (
     echo Unsupported target detected: %TARGET%. Configuring as if for Full.
     set TARGET=Full
-    set BUILD_CONFIGURATION=Debug
+    set BUILD_CONFIGURATION=%BASE_CONFIG%
 )
+
+echo Using Configuration: %BUILD_CONFIGURATION%
 
 :: Assign runtime host
 
@@ -63,6 +80,9 @@ set RUNTIME_HOST=
 if /i "%HOST%"=="CoreCLR" (
     set RUNTIME_HOST=%~dp0Tools\DotNetCLI\Dotnet.exe
     set MSBUILD_CUSTOM_PATH=%~dp0Tools\MSBuild.exe
+    :: The LKG MSBuild on Core is too old to support
+    :: SourceLink targets, so disable them.
+    set SOURCE_LINK_ARGUMENT=/p:SourceLinkCreate=false /p:DebugType=full
 ) else if /i "%HOST%"=="Full" (
     set RUNTIME_HOST=
 ) else (
@@ -87,7 +107,7 @@ echo.
 echo ** Rebuilding MSBuild with downloaded binaries
 
 set MSBUILDLOGPATH=%~dp0msbuild_bootstrap_build-%HOST%.log
-call "%~dp0build.cmd" /t:Rebuild /p:Configuration=%BUILD_CONFIGURATION% /p:"SkipBuildPackages=true" %LOCALIZED_BUILD_ARGUMENT% %SYNC_XLF_ARGUMENT% %RUNTIMETYPE_ARGUMENT%
+call "%~dp0build.cmd" /t:Rebuild /p:Configuration=%BUILD_CONFIGURATION% /p:"SkipBuildPackages=true" %LOCALIZED_BUILD_ARGUMENT% %SYNC_XLF_ARGUMENT% %RUNTIMETYPE_ARGUMENT% %SOURCE_LINK_ARGUMENT%
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -130,7 +150,7 @@ if /i "%TARGET%"=="CoreCLR" (
 if /i "%TARGET%"=="CoreCLR" (
     set MSBUILD_CUSTOM_PATH="%~dp0bin\Bootstrap-NetCore\MSBuild.dll"
 ) else (
-    set MSBUILD_CUSTOM_PATH="%~dp0bin\Bootstrap\15.0\Bin\MSBuild.exe"
+    set MSBUILD_CUSTOM_PATH="%~dp0bin\Bootstrap\MSBuild\15.0\Bin\MSBuild.exe"
 )
 
 :: The set of warnings to suppress for now
@@ -179,6 +199,7 @@ echo Options
 echo   --scope ^<scope^>                Scope of the build ^(Compile / Test^)
 echo   --target ^<target^>              CoreCLR, Full, or All ^(default: Full^)
 echo   --host ^<host^>                  CoreCLR or Full ^(default: Full^)
+echo   --config ^<config^>              Debug or Release ^(default: Debug^)
 echo   --build-only                     Only build using a downloaded copy of MSBuild but do not bootstrap
 echo                                    or build again with those binaries
 echo   --bootstrap-only                 Build and bootstrap MSBuild but do not build again with those binaries

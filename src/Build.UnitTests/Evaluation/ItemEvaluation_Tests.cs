@@ -8,10 +8,14 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using Microsoft.Build.Evaluation;
 using Xunit;
 using System.Text;
+using Microsoft.Build.Engine.UnitTests;
+using Microsoft.Build.Internal;
+using Microsoft.Build.Shared;
 
 namespace Microsoft.Build.UnitTests.Evaluation
 {
@@ -171,7 +175,7 @@ namespace Microsoft.Build.UnitTests.Evaluation
             var itemsForI = items.Where(i => i.ItemType == "i").ToList();
             ObjectModelHelpers.AssertItems(new[] { "a", "b", "c" }, itemsForI, new [] {a, b, c});
 
-            var metadataForI2 = new Dictionary<string, string>()
+            var metadataForI2 = new Dictionary<string, string>
             {
                 {"m1", "m1_updated"},
                 {"m2", "m2_updated"},
@@ -332,6 +336,78 @@ namespace Microsoft.Build.UnitTests.Evaluation
         }
 
         [Fact]
+        public void OnlyPropertyReferencesGetExpandedInPropertyFunctionArgumentsInsideIncludeAttributes()
+        {
+            var projectContent =
+@"<Project>
+        <ItemGroup>
+            <A Include=`1`/>
+            <B Include=`$([System.String]::new('@(A)'))`/>
+            <C Include=`$([System.String]::new('$(P)'))`/>
+        </ItemGroup>
+
+        <PropertyGroup>
+            <P>@(A)</P>
+        </PropertyGroup>
+</Project>";
+
+            var items = ObjectModelHelpers.GetItems(projectContent, allItems: true);
+
+            ObjectModelHelpers.AssertItems(new[] { "1", "@(A)", "@(A)" }, items);
+        }
+
+        [Fact]
+        public void MetadataAndPropertyReferencesGetExpandedInPropertyFunctionArgumentsInsideMetadataElements()
+        {
+            var projectContent =
+@"<Project>
+        <ItemGroup>
+            <A Include=`1` />
+            <B Include=`B`>
+               <M>$([System.String]::new(`%(Identity)`))</M>
+               <M2>$([System.String]::new(`%(M)`))</M2>
+            </B>
+            <C Include=`C`>
+               <M>$([System.String]::new(`$(P)`))</M>
+               <M2>$([System.String]::new(`%(M)`))</M2>
+            </C>
+            <D Include=`D`>
+               <M>$([System.String]::new(`@(A)`))</M>
+               <M2>$([System.String]::new(`%(M)`))</M2>
+            </D>
+        </ItemGroup>
+
+        <PropertyGroup>
+            <P>@(A)</P>
+        </PropertyGroup>
+</Project>";
+
+            var items = ObjectModelHelpers.GetItems(projectContent, allItems: true);
+
+            var expectedMetadata = new[]
+            {
+                new Dictionary<string, string>(),
+                new Dictionary<string, string>
+                {
+                    {"M", "B"},
+                    {"M2", "B"}
+                },
+                new Dictionary<string, string>
+                {
+                    {"M", "@(A)"},
+                    {"M2", "@(A)"}
+                },
+                new Dictionary<string, string>
+                {
+                    {"M", "@(A)"},
+                    {"M2", "@(A)"}
+                }
+            };
+
+            ObjectModelHelpers.AssertItems(new[] { "1", "B", "C", "D" }, items, expectedMetadata);
+        }
+
+        [Fact]
         public void ExcludeSeesIntermediaryState()
         {
             var projectContent =
@@ -378,7 +454,7 @@ namespace Microsoft.Build.UnitTests.Evaluation
 
             IList<ProjectItem> items = ObjectModelHelpers.GetItemsFromFragment(content, allItems: true);
 
-            var i1BaseMetadata = new Dictionary<string, string>()
+            var i1BaseMetadata = new Dictionary<string, string>
             {
                 {"m", "i1"}
             };
@@ -398,7 +474,7 @@ namespace Microsoft.Build.UnitTests.Evaluation
             //i2 items: i1_1; i1_2; i1_3
             var i2Metadata = new Dictionary<string, string>[]
             {
-                new Dictionary<string, string>()
+                new Dictionary<string, string>
                 {
                     {"m", "i2"}
                 }, 
@@ -434,6 +510,121 @@ namespace Microsoft.Build.UnitTests.Evaluation
             IList<ProjectItem> items = ObjectModelHelpers.GetItemsFromFragment(content.ToString());
 
             Assert.Equal(INCLUDE_COUNT, items.Count);
+        }
+
+        // see https://github.com/Microsoft/msbuild/issues/2069
+        [Fact]
+        public void ImmutableListBuilderBug()
+        {
+            var content = @"<i Include=""0;x1;x2;x3;x4;x5;6;7;8;9""/>
+                            <i Remove=""x*""/>";
+
+            IList<ProjectItem> items = ObjectModelHelpers.GetItemsFromFragment(content);
+
+            Assert.Equal("0;6;7;8;9", String.Join(";", items.Select(i => i.EvaluatedInclude)));
+        }
+
+        [Fact]
+        public void LazyWildcardExpansionDoesNotEvaluateWildCardsIfNotReferenced()
+        {
+            var content = @"
+<Project>
+   <Import Project=`foo/*.props`/>
+   <ItemGroup>
+      <i Include=`**/foo/**/*.cs`/>
+      <i2 Include=`**/bar/**/*.cs`/>
+   </ItemGroup>
+
+   <ItemGroup>
+      <ItemReference Include=`@(i)`/>
+      <FullPath Include=`@(i->'%(FullPath)')`/>
+      <Identity Include=`@(i->'%(Identity)')`/>
+      <RecursiveDir Include=`@(i->'%(RecursiveDir)')`/>
+   </ItemGroup>
+</Project>
+".Cleanup();
+
+            var import = @"
+<Project>
+   <PropertyGroup>
+      <FromImport>true</FromImport>
+   </PropertyGroup>
+</Project>
+".Cleanup();
+            using (var env = TestEnvironment.Create())
+            {
+                var projectFiles = env.CreateTestProjectWithFiles(content, new[] {"foo/extra.props", "foo/a.cs", "foo/b.cs", "bar/c.cs", "bar/d.cs"});
+
+                File.WriteAllText(projectFiles.CreatedFiles[0], import);
+
+                env.SetEnvironmentVariable("MsBuildSkipEagerWildCardEvaluationRegexes", ".*foo.*");
+
+                EngineFileUtilities.CaptureLazyWildcardRegexes();
+
+                var project = new Project(projectFiles.ProjectFile);
+
+                Assert.Equal("true", project.GetPropertyValue("FromImport"));
+                Assert.Equal("**/foo/**/*.cs", project.GetConcatenatedItemsOfType("i"));
+
+                var expectedItems = "bar\\c.cs;bar\\d.cs";
+
+                if (!NativeMethodsShared.IsWindows)
+                {
+                    expectedItems = expectedItems.ToSlash();
+                }
+
+                Assert.Equal(expectedItems, project.GetConcatenatedItemsOfType("i2"));
+                
+                var fullPathItems = project.GetConcatenatedItemsOfType("FullPath");
+                Assert.Contains("a.cs", fullPathItems);
+                Assert.Contains("b.cs", fullPathItems);
+
+                var identityItems = project.GetConcatenatedItemsOfType("Identity");
+                Assert.Contains("a.cs", identityItems);
+                Assert.Contains("b.cs", identityItems);
+
+                // direct item references do not expand the lazy wildcard
+                Assert.Equal("**/foo/**/*.cs", project.GetConcatenatedItemsOfType("ItemReference"));
+
+                // recursive dir does not work with lazy wildcards
+                Assert.Equal(string.Empty, project.GetConcatenatedItemsOfType("RecursiveDir"));
+            }
+        }
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void DifferentExcludesOnSameWildcardProduceDifferentResults(bool cacheFileEnumerations)
+        {
+            var projectContents = @"
+<Project>
+   <ItemGroup>
+      <i Include=`**/*.cs`/>
+      <i Include=`**/*.cs` Exclude=`*a.cs`/>
+      <i Include=`**/*.cs` Exclude=`a.cs;c.cs`/>
+   </ItemGroup>
+</Project>
+".Cleanup();
+
+            try
+            {
+                using (var env = TestEnvironment.Create())
+                {
+                    if (cacheFileEnumerations)
+                    {
+                        env.SetEnvironmentVariable("MsBuildCacheFileEnumerations", "1");
+                    }
+
+                    ObjectModelHelpers.AssertItemEvaluation(
+                        projectContents,
+                        inputFiles: new[] {"a.cs", "b.cs", "c.cs"},
+                        expectedInclude: new[] {"a.cs", "b.cs", "c.cs", "b.cs", "c.cs", "b.cs"});
+                }
+            }
+            finally
+            {
+                FileMatcher.ClearFileEnumerationsCache();
+            }
         }
     }
 }

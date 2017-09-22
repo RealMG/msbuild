@@ -835,7 +835,7 @@ namespace Microsoft.Build.Execution
                 // Create/Retrieve a configuration for each request
                 BuildRequestConfiguration buildRequestConfiguration = new BuildRequestConfiguration(submission.BuildRequestData, _buildParameters.DefaultToolsVersion, _buildParameters.GetToolset);
                 BuildRequestConfiguration matchingConfiguration = _configCache.GetMatchingConfiguration(buildRequestConfiguration);
-                BuildRequestConfiguration newConfiguration = ResolveConfiguration(buildRequestConfiguration, matchingConfiguration, (submission.BuildRequestData.Flags & BuildRequestDataFlags.ReplaceExistingProjectInstance) == BuildRequestDataFlags.ReplaceExistingProjectInstance);
+                BuildRequestConfiguration newConfiguration = ResolveConfiguration(buildRequestConfiguration, matchingConfiguration, submission.BuildRequestData.Flags.HasFlag(BuildRequestDataFlags.ReplaceExistingProjectInstance));
 
                 newConfiguration.ExplicitlyLoaded = true;
 
@@ -861,7 +861,7 @@ namespace Microsoft.Build.Execution
                 }
 
                 // Submit the build request.
-                BuildRequestBlocker blocker = new BuildRequestBlocker(-1, new string[0], new BuildRequest[] { submission.BuildRequest });
+                BuildRequestBlocker blocker = new BuildRequestBlocker(-1, Array.Empty<string>(), new BuildRequest[] { submission.BuildRequest });
                 _workQueue.Post(() =>
                 {
                     try
@@ -911,7 +911,7 @@ namespace Microsoft.Build.Execution
             }
 
             ErrorUtilities.VerifyThrow(FileUtilities.IsSolutionFilename(config.ProjectFullPath), "{0} is not a solution", config.ProjectFullPath);
-            ProjectInstance[] instances = ProjectInstance.LoadSolutionForBuild(config.ProjectFullPath, config.Properties, config.ExplicitToolsVersionSpecified ? config.ToolsVersion : null, _buildParameters, ((IBuildComponentHost)this).LoggingService, buildEventContext, false /* loaded by solution parser*/, config.TargetNames);
+            ProjectInstance[] instances = ProjectInstance.LoadSolutionForBuild(config.ProjectFullPath, config.GlobalProperties, config.ExplicitToolsVersionSpecified ? config.ToolsVersion : null, _buildParameters, ((IBuildComponentHost)this).LoggingService, buildEventContext, false /* loaded by solution parser*/, config.TargetNames);
 
             // The first instance is the traversal project, which goes into this configuration
             config.Project = instances[0];
@@ -948,7 +948,7 @@ namespace Microsoft.Build.Execution
 
             if (existingConfiguration == null)
             {
-                existingConfiguration = new BuildRequestConfiguration(GetNewConfigurationId(), new BuildRequestData(newInstance, new string[] { }), null /* use the instance's tools version */, null /* shouldn't need to get toolsets because ProjectInstance's ToolsVersion overrides */);
+                existingConfiguration = new BuildRequestConfiguration(GetNewConfigurationId(), new BuildRequestData(newInstance, Array.Empty<string>()), null /* use the instance's tools version */, null /* shouldn't need to get toolsets because ProjectInstance's ToolsVersion overrides */);
             }
             else
             {
@@ -1293,29 +1293,53 @@ namespace Microsoft.Build.Execution
             BuildRequestConfiguration resolvedConfiguration = matchingConfigurationFromCache ?? _configCache.GetMatchingConfiguration(unresolvedConfiguration);
             if (resolvedConfiguration == null)
             {
-                int newConfigurationId = _scheduler.GetConfigurationIdFromPlan(unresolvedConfiguration.ProjectFullPath);
-                if (_configCache.HasConfiguration(newConfigurationId) || (newConfigurationId == BuildRequestConfiguration.InvalidConfigurationId))
-                {
-                    // There is already a configuration like this one or one didn't exist in a plan, so generate a new ID.
-                    newConfigurationId = GetNewConfigurationId();
-                }
-
-                resolvedConfiguration = unresolvedConfiguration.ShallowCloneWithNewId(newConfigurationId);
-                _configCache.AddConfiguration(resolvedConfiguration);
+                resolvedConfiguration = AddNewConfiguration(unresolvedConfiguration);
             }
-            else if (replaceProjectInstance && unresolvedConfiguration.Project != null)
+            else if (unresolvedConfiguration.Project != null && replaceProjectInstance)
             {
-                resolvedConfiguration.Project = unresolvedConfiguration.Project;
-                _resultsCache.ClearResultsForConfiguration(resolvedConfiguration.ConfigurationId);
+                ReplaceExistingProjectInstance(unresolvedConfiguration, resolvedConfiguration);
             }
             else if (unresolvedConfiguration.Project != null && resolvedConfiguration.Project != null && !Object.ReferenceEquals(unresolvedConfiguration.Project, resolvedConfiguration.Project))
             {
-                // The user passed in a different instance than the one we already had.  Throw away any corresponding results.
-                _resultsCache.ClearResultsForConfiguration(resolvedConfiguration.ConfigurationId);
-                resolvedConfiguration.Project = unresolvedConfiguration.Project;
+                // The user passed in a different instance than the one we already had. Throw away any corresponding results.
+                ReplaceExistingProjectInstance(unresolvedConfiguration, resolvedConfiguration);
+            }
+            else if (unresolvedConfiguration.Project != null && resolvedConfiguration.Project == null)
+            {
+                // Workaround for https://github.com/Microsoft/msbuild/issues/1748
+                // If the submission has a project instance but the existing configuration does not, it probably means that the project was 
+                // built on another node (e.g. the project was encountered as a p2p reference and scheduled to a node).
+                // Add a dummy property to force cache invalidation in the scheduler and the nodes.
+                // TODO find a better solution than a dummy property
+                unresolvedConfiguration.CreateUniqueGlobalProperty();
+
+                resolvedConfiguration = AddNewConfiguration(unresolvedConfiguration);
             }
 
             return resolvedConfiguration;
+        }
+
+        private void ReplaceExistingProjectInstance(BuildRequestConfiguration newConfiguration, BuildRequestConfiguration existingConfiguration)
+        {
+            existingConfiguration.Project = newConfiguration.Project;
+            _resultsCache.ClearResultsForConfiguration(existingConfiguration.ConfigurationId);
+        }
+
+        private BuildRequestConfiguration AddNewConfiguration(BuildRequestConfiguration unresolvedConfiguration)
+        {
+            var newConfigurationId = _scheduler.GetConfigurationIdFromPlan(unresolvedConfiguration.ProjectFullPath);
+
+            if (_configCache.HasConfiguration(newConfigurationId) || (newConfigurationId == BuildRequestConfiguration.InvalidConfigurationId))
+            {
+                // There is already a configuration like this one or one didn't exist in a plan, so generate a new ID.
+                newConfigurationId = GetNewConfigurationId();
+            }
+
+            var newConfiguration = unresolvedConfiguration.ShallowCloneWithNewId(newConfigurationId);
+
+            _configCache.AddConfiguration(newConfiguration);
+
+            return newConfiguration;
         }
 
         /// <summary>
@@ -1626,6 +1650,19 @@ namespace Microsoft.Build.Execution
 
                 if (_buildSubmissions.Count == 0)
                 {
+                    if (submission.BuildRequestData != null && submission.BuildRequestData.Flags.HasFlag(BuildRequestDataFlags.ClearCachesAfterBuild))
+                    {
+                        // Reset the project root element cache if specified which ensures that projects will be re-loaded from disk.  We do not need to reset the
+                        // cache on child nodes because the OutOfProcNode class sets "autoReloadFromDisk" to "true" which handles the case when a restore modifies
+                        // part of the import graph.
+                        _buildParameters?.ProjectRootElementCache?.Clear();
+
+                        FileMatcher.ClearFileEnumerationsCache();
+#if !CLR2COMPATIBILITY
+                        FileUtilities.ClearFileExistenceCache();
+#endif
+                    }
+
                     _noActiveSubmissionsEvent.Set();
                 }
             }

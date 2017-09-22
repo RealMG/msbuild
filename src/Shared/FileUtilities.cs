@@ -2,6 +2,9 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
+#if !CLR2COMPATIBILITY
+using System.Collections.Concurrent;
+#endif
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -10,15 +13,17 @@ using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Text;
 using System.Threading;
+using Microsoft.Build.Utilities;
 
 namespace Microsoft.Build.Shared
 {
     /// <summary>
     /// This class contains utility methods for file IO.
-    /// PERF\COVERAGE NOTE: Try to keep classes in 'shared' as granular as possible. All the methods in 
+    /// PERF\COVERAGE NOTE: Try to keep classes in 'shared' as granular as possible. All the methods in
     /// each class get pulled into the resulting assembly.
     /// </summary>
     internal static partial class FileUtilities
@@ -33,7 +38,7 @@ namespace Microsoft.Build.Shared
 
         // This is the fake current executable we use in case we are running tests.
 
-        // MaxPath accounts for the null-terminating character, for example, the maximum path on the D drive is "D:\<256 chars>\0". 
+        // MaxPath accounts for the null-terminating character, for example, the maximum path on the D drive is "D:\<256 chars>\0".
         // See: ndp\clr\src\BCL\System\IO\Path.cs
         internal const int MaxPath = 260;
 
@@ -44,8 +49,8 @@ namespace Microsoft.Build.Shared
 
         /// <summary>
         /// FOR UNIT TESTS ONLY
-        /// Clear out the static variable used for the cache directory so that tests that 
-        /// modify it can validate their modifications. 
+        /// Clear out the static variable used for the cache directory so that tests that
+        /// modify it can validate their modifications.
         /// </summary>
         internal static void ClearCacheDirectoryPath()
         {
@@ -60,7 +65,7 @@ namespace Microsoft.Build.Shared
         /// MSBuild should support the union of invalid path chars across the supported OSes, so builds can have the same behaviour crossplatform: https://github.com/Microsoft/msbuild/issues/781#issuecomment-243942514
         /// </summary>
 
-        internal static char[] InvalidPathChars => new char[]
+        internal static readonly char[] InvalidPathChars = new char[]
         {
             '|', '\0',
             (char)1, (char)2, (char)3, (char)4, (char)5, (char)6, (char)7, (char)8, (char)9, (char)10,
@@ -73,7 +78,7 @@ namespace Microsoft.Build.Shared
         /// Copied from https://github.com/dotnet/corefx/blob/387cf98c410bdca8fd195b28cbe53af578698f94/src/System.Runtime.Extensions/src/System/IO/Path.Windows.cs#L18
         /// MSBuild should support the union of invalid path chars across the supported OSes, so builds can have the same behaviour crossplatform: https://github.com/Microsoft/msbuild/issues/781#issuecomment-243942514
         /// </summary>
-        internal static char[] InvalidFileNameChars => new char[]
+        internal static readonly char[] InvalidFileNameChars = new char[]
         {
             '\"', '<', '>', '|', '\0',
             (char)1, (char)2, (char)3, (char)4, (char)5, (char)6, (char)7, (char)8, (char)9, (char)10,
@@ -83,6 +88,10 @@ namespace Microsoft.Build.Shared
         };
 
         private static readonly char[] Slashes = { '/', '\\' };
+
+#if !CLR2COMPATIBILITY
+        private static ConcurrentDictionary<string, bool> FileExistenceCache = new ConcurrentDictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+#endif
 
         /// <summary>
         /// Retrieves the MSBuild runtime cache directory
@@ -205,7 +214,7 @@ namespace Microsoft.Build.Shared
         }
 
         /// <summary>
-        /// Indicates if the given character is a slash. 
+        /// Indicates if the given character is a slash.
         /// </summary>
         /// <param name="c"></param>
         /// <returns>true, if slash</returns>
@@ -269,7 +278,7 @@ namespace Microsoft.Build.Shared
 
         /// <summary>
         /// Gets the canonicalized full path of the provided path.
-        /// Path.GetFullPath The pre .Net 4.6.2 implementation of Path.GetFullPath is slow and creates strings in its work. 
+        /// Path.GetFullPath The pre .Net 4.6.2 implementation of Path.GetFullPath is slow and creates strings in its work.
         /// Therefore MSBuild has its own implementation on full framework.
         /// Guidance for use: call this on all paths accepted through public entry
         /// points that need normalization. After that point, only verify the path
@@ -369,7 +378,7 @@ namespace Microsoft.Build.Shared
                                // Check for \\?\Globalroot, an internal mechanism to the kernel
                                // that provides aliases for drives and other undocumented stuff.
                                // The kernel team won't even describe the full set of what
-                               // is available here - we don't want managed apps mucking 
+                               // is available here - we don't want managed apps mucking
                                // with this for security reasons.
                             */
                     if (startIndex == finalFullPath.Length || finalFullPath.IndexOf(@"\\?\globalroot", PathComparison) != -1)
@@ -401,8 +410,10 @@ namespace Microsoft.Build.Shared
         /// first segment exists and is a directory.
         /// Use a native shared method to massage file path. If the file is adjusted,
         /// that qualifies is as a path.
+        ///
+        /// @baseDirectory is just passed to LooksLikeUnixFilePath, to help with the check
         /// </summary>
-        internal static string MaybeAdjustFilePath(string value)
+        internal static string MaybeAdjustFilePath(string value, string baseDirectory="")
         {
             // Don't bother with arrays or properties or network paths, or those that
             // have no slashes.
@@ -436,15 +447,18 @@ namespace Microsoft.Build.Shared
                 }
             }
 
-            return LooksLikeUnixFilePath(checkValue) ? newValue : value;
+            return LooksLikeUnixFilePath(checkValue, baseDirectory) ? newValue : value;
         }
 
         /// <summary>
         /// If on Unix, check if the string looks like a file path.
         /// The heuristic is if something resembles paths (contains slashes) check if the
         /// first segment exists and is a directory.
+        ///
+        /// If @baseDirectory is not null, then look for the first segment exists under
+        /// that
         /// </summary>
-        internal static bool LooksLikeUnixFilePath(string value)
+        internal static bool LooksLikeUnixFilePath(string value, string baseDirectory="")
         {
             if (!NativeMethodsShared.IsUnixLike)
             {
@@ -453,13 +467,19 @@ namespace Microsoft.Build.Shared
 
             var firstSlash = value.IndexOf('/');
 
-            // The first slash will either be at the beginning of the string or after the first directory name 
+            // The first slash will either be at the beginning of the string or after the first directory name
             if (firstSlash == 0)
             {
                 firstSlash = value.Substring(1).IndexOf('/') + 1;
             }
 
-            if (firstSlash > 0 && Directory.Exists(value.Substring(0, firstSlash)))
+            if (firstSlash > 0 && Directory.Exists(Path.Combine(baseDirectory, value.Substring(0, firstSlash))))
+            {
+                return true;
+            }
+
+            // Check for actual files or directories under / that get missed by the above logic
+            if (firstSlash == 0 && value[0] == '/' && (Directory.Exists(value) || File.Exists(value)))
             {
                 return true;
             }
@@ -552,7 +572,7 @@ namespace Microsoft.Build.Shared
         }
 
         /// <summary>
-        /// A variation of Path.GetFullPath that will return the input value 
+        /// A variation of Path.GetFullPath that will return the input value
         /// instead of throwing any IO exception.
         /// Useful to get a better path for an error message, without the risk of throwing
         /// if the error message was itself caused by the path being invalid!
@@ -595,7 +615,7 @@ namespace Microsoft.Build.Shared
         /// <summary>
         /// Normalizes a path for path comparison
         /// Does not throw IO exceptions. See <see cref="GetFullPathNoThrow(string)"/>
-        /// 
+        ///
         /// </summary>
         internal static string NormalizePathForComparisonNoThrow(string path, string currentDirectory)
         {
@@ -618,19 +638,14 @@ namespace Microsoft.Build.Shared
                 return true;
             }
 
-            var filename = GetFileName(path);
-
-            return filename.IndexOfAny(InvalidFileNameChars) >= 0;
-        }
-
-        // Path.GetFileName does not react well to malformed filenames.
-        // For example, Path.GetFileName("a/b/foo:bar") returns bar instead of foo:bar
-        // It also throws exceptions on illegal path characters
-        private static string GetFileName(string path)
-        {
+            // Path.GetFileName does not react well to malformed filenames.
+            // For example, Path.GetFileName("a/b/foo:bar") returns bar instead of foo:bar
+            // It also throws exceptions on illegal path characters
             var lastDirectorySeparator = path.LastIndexOfAny(Slashes);
-            return lastDirectorySeparator >= 0 ? path.Substring(lastDirectorySeparator + 1) : path;
+
+            return path.IndexOfAny(InvalidFileNameChars, lastDirectorySeparator >= 0 ? lastDirectorySeparator + 1 : 0) >= 0;
         }
+
 
         /// <summary>
         /// A variation on File.Delete that will throw ExceptionHandling.NotExpectedException exceptions
@@ -650,11 +665,8 @@ namespace Microsoft.Build.Shared
         /// A variation on Directory.Delete that will throw ExceptionHandling.NotExpectedException exceptions
         /// </summary>
         [SuppressMessage("Microsoft.Usage", "CA1806:DoNotIgnoreMethodResults", MessageId = "System.Int32.TryParse(System.String,System.Int32@)", Justification = "We expect the out value to be 0 if the parse fails and compensate accordingly")]
-        internal static void DeleteDirectoryNoThrow(string path, bool recursive)
+        internal static void DeleteDirectoryNoThrow(string path, bool recursive, int retryCount = 0, int retryTimeOut = 0)
         {
-            int retryCount;
-            int retryTimeOut;
-
             // Try parse will set the out parameter to 0 if the string passed in is null, or is outside the range of an int.
             if (!int.TryParse(Environment.GetEnvironmentVariable("MSBUILDDIRECTORYDELETERETRYCOUNT"), out retryCount))
             {
@@ -838,12 +850,19 @@ namespace Microsoft.Build.Shared
             fullPath = AttemptToShortenPath(fullPath);
             if (NativeMethodsShared.IsWindows)
             {
-                NativeMethodsShared.WIN32_FILE_ATTRIBUTE_DATA data = new NativeMethodsShared.WIN32_FILE_ATTRIBUTE_DATA();
-                bool success = false;
-
-                success = NativeMethodsShared.GetFileAttributesEx(fullPath, 0, ref data);
-
-                return success;
+#if !CLR2COMPATIBILITY
+                if (Traits.Instance.CacheFileExistence)
+                {
+                    // Possible future improvement: make sure file existence caching happens only at evaluation time, and maybe only within a build session. https://github.com/Microsoft/msbuild/issues/2306
+                    return FileExistenceCache.GetOrAdd(fullPath, NativeMethodsShared.FileExists);
+                }
+                else
+                {
+#endif
+                    return NativeMethodsShared.FileExists(fullPath);
+#if !CLR2COMPATIBILITY
+                }
+#endif
             }
             else
             {
@@ -889,11 +908,11 @@ namespace Microsoft.Build.Shared
         }
 
         /// <summary>
-        /// Given the absolute location of a file, and a disc location, returns relative file path to that disk location. 
+        /// Given the absolute location of a file, and a disc location, returns relative file path to that disk location.
         /// Throws UriFormatException.
         /// </summary>
         /// <param name="basePath">
-        /// The base path we want to relativize to. Must be absolute.  
+        /// The base path we want to be relative to. Must be absolute.
         /// Should <i>not</i> include a filename as the last segment will be interpreted as a directory.
         /// </param>
         /// <param name="path">
@@ -1010,7 +1029,7 @@ namespace Microsoft.Build.Shared
 
         internal static string TrimTrailingSlashes(this string s)
         {
-            return s.TrimEnd('/', '\\');
+            return s.TrimEnd(Slashes);
         }
 
         /// <summary>
@@ -1028,23 +1047,89 @@ namespace Microsoft.Build.Shared
 
         internal static string NormalizeForPathComparison(this string s) => s.ToSlash().TrimTrailingSlashes();
 
+        // TODO: assumption on file system case sensitivity: https://github.com/Microsoft/msbuild/issues/781
         internal static bool PathsEqual(string path1, string path2)
         {
-            var trim1 = path1.TrimTrailingSlashes();
-            var trim2 = path2.TrimTrailingSlashes();
-
-            if (string.Equals(trim1, trim2, PathComparison))
+            if (path1 == null && path2 == null)
             {
                 return true;
             }
+            if (path1 == null || path2 == null)
+            {
+                return false;
+            }
 
-            var slash1 = trim1.ToSlash();
-            var slash2 = trim2.ToSlash();
+            var endA = path1.Length - 1;
+            var endB = path2.Length - 1;
 
-            return string.Equals(slash1, slash2, PathComparison);
+            // Trim trailing slashes
+            for (var i = endA; i >= 0; i--)
+            {
+                var c = path1[i];
+                if (c == '/' || c == '\\')
+                {
+                    endA--;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            for (var i = endB; i >= 0; i--)
+            {
+                var c = path2[i];
+                if (c == '/' || c == '\\')
+                {
+                    endB--;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            if (endA != endB)
+            {
+                // Lengths not the same
+                return false;
+            }
+
+            for (var i = 0; i <= endA; i++)
+            {
+                var charA = (uint)path1[i];
+                var charB = (uint)path2[i];
+
+                if ((charA | charB) > 0x7F)
+                {
+                    // Non-ascii chars move to non fast path
+                    return PathsEqualNonAscii(path1, path2, i, endA - i + 1);
+                }
+
+                // uppercase both chars - notice that we need just one compare per char
+                if ((uint)(charA - 'a') <= (uint)('z' - 'a')) charA -= 0x20;
+                if ((uint)(charB - 'a') <= (uint)('z' - 'a')) charB -= 0x20;
+
+                // Set path delimiters the same
+                if (charA == '\\')
+                {
+                    charA = '/';
+                }
+                if (charB == '\\')
+                {
+                    charB = '/';
+                }
+
+                if (charA != charB)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
-		
-		internal static StreamWriter OpenWrite(string path, bool append, Encoding encoding = null)
+
+        internal static StreamWriter OpenWrite(string path, bool append, Encoding encoding = null)
         {
             const int DefaultFileStreamBufferSize = 4096;
             FileMode mode = append ? FileMode.Append : FileMode.Create;
@@ -1072,5 +1157,37 @@ namespace Microsoft.Build.Shared
                 return new StreamReader(fileStream, encoding, detectEncodingFromByteOrderMarks);
             }
         }
+
+        // Method is simple set of function calls and may inline;
+        // we don't want it inlining into the tight loop that calls it as an exit case,
+        // so mark as non-inlining
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool PathsEqualNonAscii(string strA, string strB, int i, int length)
+        {
+            if (string.Compare(strA, i, strB, i, length, StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                return true;
+            }
+
+            var slash1 = strA.ToSlash();
+            var slash2 = strB.ToSlash();
+
+            if (string.Compare(slash1, i, slash2, i, length, StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+#if !CLR2COMPATIBILITY
+        /// <summary>
+        /// Clears the file existence cache.
+        /// </summary>
+        internal static void ClearFileExistenceCache()
+        {
+            FileExistenceCache.Clear();
+        }
+#endif
     }
 }

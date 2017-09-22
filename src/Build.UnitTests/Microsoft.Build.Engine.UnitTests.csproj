@@ -52,11 +52,11 @@
     <Compile Include="..\Shared\UnitTests\ResourceUtilities_Tests.cs">
       <ExcludeFromStyleCop>true</ExcludeFromStyleCop>
     </Compile>
-    <Compile Include="..\Shared\UnitTests\RunnerUtilities.cs">
-      <ExcludeFromStyleCop>true</ExcludeFromStyleCop>
-    </Compile>
     <Compile Include="..\Shared\UnitTests\StreamHelpers.cs">
       <ExcludeFromStyleCop>true</ExcludeFromStyleCop>
+    </Compile>
+    <Compile Include="..\Shared\UnitTests\TestEnvironment.cs">
+      <Link>TestEnvironment.cs</Link>
     </Compile>
     <Compile Include="..\Shared\UnitTests\TypeLoader_Tests.cs">
       <ExcludeFromStyleCop>true</ExcludeFromStyleCop>
@@ -103,6 +103,8 @@
     <Compile Include="BackEnd\MockLoggingService.cs" />
     <Compile Include="BackEnd\MockTaskBuilder.cs" />
     <Compile Include="BackEnd\MSBuild_Tests.cs" />
+    <Compile Include="BackEnd\SdkResolution_Tests.cs" />
+    <Compile Include="BackEnd\SdkResolverLoader_Tests.cs" />
     <Compile Include="BackEnd\TargetBuilder_Tests.cs" />
     <Compile Include="BackEnd\EventRedirectorToSink_Tests.cs " />
     <Compile Include="BackEnd\EventSourceSink_Tests.cs " />
@@ -124,6 +126,10 @@
     <Compile Include="BackEnd\TaskHostTaskCancelled_Tests.cs" />
     <Compile Include="BackEnd\TaskHostTaskComplete_Tests.cs" />
     <Compile Include="BackEnd\TaskHost_Tests.cs" />
+    <Compile Include="Construction\ProjectRootElement_Tests.cs" />
+    <Compile Include="Evaluation\EvaluationLogging_Tests.cs" />
+    <Compile Include="MockLoggingContext.cs" />
+    <Compile Include="TestComparers\TaskRegistryComparers.cs" />
     <Compile Include="BackEnd\TaskRegistry_Tests.cs" />
     <Compile Include="BackEnd\TranslationHelpers.cs" />
     <Compile Include="BackEnd\TargetEntry_Tests.cs" />
@@ -174,10 +180,17 @@
     <Compile Include="Globbing\MSBuildGlob_Tests.cs" />
     <Compile Include="HashTableUtility_Tests.cs" />
     <Compile Include="Instance\HostServices_Tests.cs" />
+    <Compile Include="TestComparers\ProjectInstanceModelTestComparers.cs" />
+    <Compile Include="TestData\ProjectInstanceTestObjects.cs" />
     <Compile Include="Instance\ProjectInstance_Internal_Tests.cs" />
+    <Compile Include="Instance\ProjectTaskInstance_Internal_Tests.cs" />
+    <Compile Include="Instance\ProjectTargetInstance_Internal_Tests.cs" />
     <Compile Include="Instance\ProjectMetadataInstance_Internal_Tests.cs" />
+    <Compile Include="Instance\ProjectItemGroupTaskItemInstance_Internal_Tests.cs" />
     <Compile Include="Instance\ProjectPropertyInstance_Internal_Tests.cs" />
+    <Compile Include="Instance\ProjectPropertyGroupTaskPropertyInstance_Internal_Tests.cs" />
     <Compile Include="Instance\TaskItem_Tests.cs" />
+    <Compile Include="FixPathOnUnix_Tests.cs" />
     <Compile Include="InvalidProjectFileException_Tests.cs" />
     <Compile Include="LogFormatter_Tests.cs" />
     <Compile Include="LoggerDescription_Tests.cs" />
@@ -190,6 +203,7 @@
     <Compile Include="TargetsFile_Test.cs" />
     <Compile Include="TestUtilities.cs" />
     <Compile Include="Utilities_Tests.cs" />
+    <Compile Include="WarningsAsMessagesAndErrors_Tests.cs" />
     <None Include="..\Shared\UnitTests\App.config">
       <Link>App.config</Link>
       <SubType>Designer</SubType>
@@ -204,10 +218,11 @@
     </None>
     <None Include="project.json" />
   </ItemGroup>
-  <ItemGroup Condition="$(TargetFrameworkIdentifier) != '.NETFramework'">
-    <Compile Include="Compat\TempFileCollection.cs" />
-  </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\UnitTests.Shared\Microsoft.Build.UnitTests.Shared.csproj">
+      <Project>{E1ADB824-2B34-4920-953F-746DFD6DB3C1}</Project>
+      <Name>Microsoft.Build.UnitTests.Shared</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Utilities\Microsoft.Build.Utilities.csproj">
       <Project>{828566ee-6f6a-4ef4-98b0-513f7df9c628}</Project>
       <Name>Microsoft.Build.Utilities</Name>

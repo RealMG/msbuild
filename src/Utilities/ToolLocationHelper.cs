@@ -1125,7 +1125,7 @@ namespace Microsoft.Build.Utilities
                 ErrorUtilities.DebugTraceMessage("GetLegacyTargetPlatformReferences", "Encountered exception trying to gather the platform references: {0}", e.Message);
             }
 
-            return new string[0];
+            return Array.Empty<string>();
         }
 
         /// <summary>
@@ -1148,7 +1148,7 @@ namespace Microsoft.Build.Utilities
             ErrorUtilities.VerifyThrowArgumentLength(targetPlatformIdentifier, "targetPlatformIdentifier");
             ErrorUtilities.VerifyThrowArgumentLength(targetPlatformVersion, "targetPlatformVersion");
 
-            string[] contractWinMDs = new string[0];
+            string[] contractWinMDs = Array.Empty<string>();
 
             TargetPlatformSDK matchingSdk = GetMatchingPlatformSDK(targetPlatformIdentifier, targetPlatformVersion, diskRoots, null, registryRoot);
             string platformKey = TargetPlatformSDK.GetSdkKey(targetPlatformIdentifier, targetPlatformVersion);
@@ -1190,7 +1190,7 @@ namespace Microsoft.Build.Utilities
         {
             if (apiContracts == null)
             {
-                return new string[] { };
+                return Array.Empty<string>();
             }
 
             List<string> contractWinMDs = new List<string>();
@@ -2960,7 +2960,7 @@ namespace Microsoft.Build.Utilities
         /// </summary>
         private static void ExtractSdkDiskRootsFromEnvironment(List<string> diskRoots, string directoryRoots)
         {
-            if (!String.IsNullOrEmpty(directoryRoots))
+            if (diskRoots != null && !String.IsNullOrEmpty(directoryRoots))
             {
                 string[] splitRoots = directoryRoots.Split(s_diskRootSplitChars, StringSplitOptions.RemoveEmptyEntries);
                 ErrorUtilities.DebugTraceMessage("ExtractSdkDiskRootsFromEnvironment", "DiskRoots from Registry '{0}'", String.Join(";", splitRoots));

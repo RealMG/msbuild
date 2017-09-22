@@ -15,6 +15,7 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using Microsoft.Build.Utilities;
 
 namespace Microsoft.Build.Evaluation
 {
@@ -28,20 +29,11 @@ namespace Microsoft.Build.Evaluation
         private readonly Expander<P, I> _outerExpander;
         private readonly IEvaluatorData<P, I, M, D> _evaluatorData;
         private readonly Expander<P, I> _expander;
-
         private readonly IItemFactory<I, I> _itemFactory;
+        private readonly LoggingContext _loggingContext;
 
         private int _nextElementOrder = 0;
 
-        /// <summary>
-        /// Build event context to log evaluator events in.
-        /// </summary>
-        private BuildEventContext _buildEventContext = null;
-
-        /// <summary>
-        /// The logging service for use during evaluation
-        /// </summary>
-        private readonly ILoggingService _loggingService;
 
         /// <summary>
         /// The CultureInfo from the invariant culture. Used to avoid allocations for
@@ -49,24 +41,18 @@ namespace Microsoft.Build.Evaluation
         /// </summary>
         private static CompareInfo s_invariantCompareInfo = CultureInfo.InvariantCulture.CompareInfo;
 
-        // MSBUILDUSECASESENSITIVEITEMNAMES is an escape hatch for the fix
-        // for https://github.com/Microsoft/msbuild/issues/1751. It should
-        // be removed (permanently set to false) after establishing that
-        // it's unneeded (at least by the 16.0 timeframe).
-        private Dictionary<string, LazyItemList> _itemLists = Environment.GetEnvironmentVariable("MSBUILDUSECASESENSITIVEITEMNAMES") == "1" ?
+        private Dictionary<string, LazyItemList> _itemLists = Traits.Instance.EscapeHatches.UseCaseSensitiveItemNames ?
             new Dictionary<string, LazyItemList>() :
-            new Dictionary<string, LazyItemList>(MSBuildNameIgnoreCaseComparer.Default);
+            new Dictionary<string, LazyItemList>(StringComparer.OrdinalIgnoreCase);
 
-        public LazyItemEvaluator(IEvaluatorData<P, I, M, D> data, IItemFactory<I, I> itemFactory, BuildEventContext buildEventContext, ILoggingService loggingService)
+        public LazyItemEvaluator(IEvaluatorData<P, I, M, D> data, IItemFactory<I, I> itemFactory, LoggingContext loggingContext)
         {
             _outerEvaluatorData = data;
             _outerExpander = new Expander<P, I>(_outerEvaluatorData, _outerEvaluatorData);
             _evaluatorData = new EvaluatorData(_outerEvaluatorData, itemType => GetItems(itemType).Select(itemData => itemData.Item).ToList());
             _expander = new Expander<P, I>(_evaluatorData, _evaluatorData);
             _itemFactory = itemFactory;
-
-            _buildEventContext = buildEventContext;
-            _loggingService = loggingService;
+            _loggingContext = loggingContext;
         }
 
         private ICollection<ItemData> GetItems(string itemType)
@@ -99,8 +85,8 @@ namespace Microsoft.Build.Evaluation
                 expanderOptions,
                 GetCurrentDirectoryForConditionEvaluation(element, lazyEvaluator),
                 element.ConditionLocation,
-                lazyEvaluator._loggingService,
-                lazyEvaluator._buildEventContext
+                lazyEvaluator._loggingContext.LoggingService,
+                lazyEvaluator._loggingContext.BuildEventContext
                 );
 
             return result;
@@ -375,9 +361,9 @@ namespace Microsoft.Build.Evaluation
             public string ItemType { get; set; }
             public ItemSpec<P,I> ItemSpec { get; set; }
 
-            public ImmutableDictionary<string, LazyItemList>.Builder ReferencedItemLists { get; } = Environment.GetEnvironmentVariable("MSBUILDUSECASESENSITIVEITEMNAMES") == "1" ?
+            public ImmutableDictionary<string, LazyItemList>.Builder ReferencedItemLists { get; } = Traits.Instance.EscapeHatches.UseCaseSensitiveItemNames ?
                 ImmutableDictionary.CreateBuilder<string, LazyItemList>() :
-                ImmutableDictionary.CreateBuilder<string, LazyItemList>(MSBuildNameIgnoreCaseComparer.Default);
+                ImmutableDictionary.CreateBuilder<string, LazyItemList>(StringComparer.OrdinalIgnoreCase);
 
             public bool ConditionResult { get; set; }
 
@@ -391,7 +377,7 @@ namespace Microsoft.Build.Evaluation
 
         private class OperationBuilderWithMetadata : OperationBuilder
         {
-            public ImmutableList<PartiallyEvaluatedMetadata>.Builder Metadata = ImmutableList.CreateBuilder<PartiallyEvaluatedMetadata>();
+            public ImmutableList<ProjectMetadataElement>.Builder Metadata = ImmutableList.CreateBuilder<ProjectMetadataElement>();
 
             public OperationBuilderWithMetadata(ProjectItemElement itemElement, bool conditionResult) : base(itemElement, conditionResult)
             {
@@ -521,6 +507,8 @@ namespace Microsoft.Build.Evaluation
         {
             if (itemElement.HasMetadata)
             {
+                operationBuilder.Metadata.AddRange(itemElement.Metadata);
+
                 var values = new List<string>(itemElement.Metadata.Count * 2);
 
                 // Expand properties here, because a property may have a value which is an item reference (ie "@(Bar)"), and
@@ -536,14 +524,6 @@ namespace Microsoft.Build.Evaluation
                         metadatumElement.Condition,
                         ExpanderOptions.ExpandProperties,
                         metadatumElement.ConditionLocation);
-
-                    operationBuilder.Metadata.Add(
-                        new PartiallyEvaluatedMetadata
-                        {
-                            ValueWithPropertiesExpanded = valueWithPropertiesExpanded,
-                            ConditionWithPropertiesExpanded = conditionWithPropertiesExpanded,
-                            Element = metadatumElement
-                        });
 
                     values.Add(valueWithPropertiesExpanded);
                     values.Add(conditionWithPropertiesExpanded);
@@ -601,14 +581,6 @@ namespace Microsoft.Build.Evaluation
                     AddReferencedItemLists(operationBuilder, subMatch);
                 }
             }
-        }
-
-        // todo: replace with value tuples when we move to C# 7
-        private struct PartiallyEvaluatedMetadata
-        {
-            public ProjectMetadataElement Element { get; set; }
-            public string ConditionWithPropertiesExpanded { get; set; }
-            public string ValueWithPropertiesExpanded { get; set; }
         }
     }
 }

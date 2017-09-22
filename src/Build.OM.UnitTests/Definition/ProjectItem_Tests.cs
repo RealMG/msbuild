@@ -12,6 +12,7 @@ using System.IO;
 using System.Linq;
 using System.Xml;
 using Microsoft.Build.Construction;
+using Microsoft.Build.Engine.UnitTests;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Shared;
 using InvalidProjectFileException = Microsoft.Build.Exceptions.InvalidProjectFileException;
@@ -898,9 +899,12 @@ namespace Microsoft.Build.UnitTests.OM.Definition
 
             Action<bool, bool> runTest = (includeIsAbsolute, excludeIsAbsolute) =>
             {
-                using (var testProject = new Helpers.TestProjectWithFiles(projectContents, inputFiles, "project"))
+                using (var env = TestEnvironment.Create())
                 {
-                    var projectFile = testProject.ProjectFile;
+                    var projectFile = env
+                        .CreateTestProjectWithFiles(projectContents, inputFiles, "project")
+                        .ProjectFile;
+
                     var projectFileDir = Path.GetDirectoryName(projectFile);
 
                     var include = adjustFilePath(includeIsAbsolute, projectFileDir, includeRelativePath, includeItem);
@@ -950,9 +954,10 @@ namespace Microsoft.Build.UnitTests.OM.Definition
         {
             var projectContents = string.Format(ItemWithIncludeAndExclude, includeString, excludeString);
 
-            using (var testFiles = new Helpers.TestProjectWithFiles(projectContents, files, relativePathFromRootToProject))
+            using (var env = TestEnvironment.Create())
             using (var projectCollection = new ProjectCollection())
             {
+                var testFiles = env.CreateTestProjectWithFiles(projectContents, files,relativePathFromRootToProject);
                 ObjectModelHelpers.AssertItems(expectedInclude, new Project(testFiles.ProjectFile, new Dictionary<string, string>(), MSBuildConstants.CurrentToolsVersion, projectCollection).Items.ToList());
             }
 
@@ -970,9 +975,10 @@ namespace Microsoft.Build.UnitTests.OM.Definition
         {
             var projectContents = string.Format(ItemWithIncludeAndExclude, includeString, excludeString);
 
-            using (var testFiles = new Helpers.TestProjectWithFiles(projectContents, files, relativePathFromRootToProject))
+            using (var env = TestEnvironment.Create())
             using (var projectCollection = new ProjectCollection())
             {
+                var testFiles = env.CreateTestProjectWithFiles(projectContents, files, relativePathFromRootToProject);
                 ObjectModelHelpers.AssertItems(expectedInclude, new Project(testFiles.ProjectFile, new Dictionary<string, string>(), MSBuildConstants.CurrentToolsVersion, projectCollection).Items.ToList());
             }
 
@@ -1941,8 +1947,178 @@ namespace Microsoft.Build.UnitTests.OM.Definition
             }
            );
         }
-		
-		//  TODO: Should remove tests go in project item tests, project item instance tests, or both?
+
+        [Fact]
+        public void SetDirectMetadataShouldEvaluateMetadataValue()
+        {
+            var projectContents =
+@"<Project>
+  <PropertyGroup>
+    <P>p</P>
+  </PropertyGroup>
+  <ItemGroup>
+    <Foo Include=`f1;f2`/>
+    <I Include=`i`/>
+  </ItemGroup>
+</Project>".Cleanup();
+
+            using (var env = TestEnvironment.Create())
+            {
+                var project = ObjectModelHelpers.CreateInMemoryProject(env.CreateProjectCollection().Collection, projectContents, null, null);
+
+                var metadata = project.GetItems("I").FirstOrDefault().SetMetadataValue("M", "$(P);@(Foo)", true);
+
+                Assert.Equal("p;f1;f2", metadata.EvaluatedValue);
+                Assert.Equal("$(P);@(Foo)", metadata.Xml.Value);
+            }
+        }
+
+        [Fact]
+        public void SetDirectMetadataWhenSameMetadataComesFromDefinitionGroupShouldAddDirectMetadata()
+        {
+            var projectContents =
+@"<Project>
+  <ItemDefinitionGroup>
+    <I>
+      <M>V</M>
+    </I>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <I Include=`i`/>
+  </ItemGroup>
+</Project>".Cleanup();
+
+            using (var env = TestEnvironment.Create())
+            {
+                var project = ObjectModelHelpers.CreateInMemoryProject(env.CreateProjectCollection().Collection, projectContents, null, null);
+
+                var item = project.GetItems("I").FirstOrDefault();
+                var metadata = item.SetMetadataValue("M", "V", true);
+
+                Assert.Equal("M", metadata.Name);
+                Assert.Equal("V", metadata.EvaluatedValue);
+
+                Assert.Equal(1, item.Xml.Metadata.Count);
+
+                ProjectMetadataElement metadataElement = item.Xml.Metadata.FirstOrDefault();
+                Assert.Equal("M", metadataElement.Name);
+                Assert.Equal("V", metadataElement.Value);
+            }
+        }
+
+        [Fact]
+        public void SetDirectMetadataShouldAffectAllSiblingItems()
+        {
+            var projectContents =
+@"<Project>
+  <ItemGroup>
+    <Foo Include=`f1;f2`/>
+    <I Include=`*.cs;@(Foo);i1`>
+      <M1>V1</M1>
+    </I>
+  </ItemGroup>
+</Project>".Cleanup();
+
+            using (var env = TestEnvironment.Create())
+            {
+                var testProject = env.CreateTestProjectWithFiles(projectContents.Cleanup(), new[] {"a.cs"});
+
+                var project = new Project(testProject.ProjectFile, new Dictionary<string, string>(), MSBuildConstants.CurrentToolsVersion, env.CreateProjectCollection().Collection);
+
+                var items = project.GetItems("I");
+
+                Assert.Equal(4, items.Count);
+
+                Assert.False(project.IsDirty);
+
+                items.First().SetMetadataValue("M2", "V2", true);
+
+                Assert.True(project.IsDirty);
+
+                Assert.Equal(2, project.Xml.AllChildren.OfType<ProjectItemElement>().Count());
+
+                foreach (var item in items)
+                {
+                    var metadata = item.Metadata;
+
+                    Assert.Equal(2, metadata.Count);
+
+                    var m1 = metadata.ElementAt(0);
+                    Assert.Equal("M1", m1.Name);
+                    Assert.Equal("V1", m1.EvaluatedValue);
+
+                    var m2 = metadata.ElementAt(1);
+                    Assert.Equal("M2", m2.Name);
+                    Assert.Equal("V2", m2.EvaluatedValue);
+                }
+
+                var metadataElements = items.First().Xml.Metadata;
+
+                Assert.Equal(2, metadataElements.Count);
+
+                var me1 = metadataElements.ElementAt(0);
+                Assert.Equal("M1", me1.Name);
+                Assert.Equal("V1", me1.Value);
+
+                var me2 = metadataElements.ElementAt(1);
+                Assert.Equal("M2", me2.Name);
+                Assert.Equal("V2", me2.Value);
+            }
+        }
+
+        [Fact]
+        public void SetDirectMetadataShouldUpdateAlreadyExistingDirectMetadata()
+        {
+            var projectContents =
+@"<Project>
+  <ItemGroup>
+    <Foo Include=`f1;f2`/>
+    <I Include=`*.cs;@(Foo);i1`>
+      <M1>V1</M1>
+    </I>
+  </ItemGroup>
+</Project>".Cleanup();
+
+            using (var env = TestEnvironment.Create())
+            {
+                var testProject = env.CreateTestProjectWithFiles(projectContents.Cleanup(), new[] { "a.cs" });
+
+                var project = new Project(testProject.ProjectFile, new Dictionary<string, string>(), MSBuildConstants.CurrentToolsVersion, env.CreateProjectCollection().Collection);
+
+                var items = project.GetItems("I");
+
+                Assert.Equal(4, items.Count);
+
+                Assert.False(project.IsDirty);
+
+                items.First().SetMetadataValue("M1", "V2", true);
+
+                Assert.True(project.IsDirty);
+
+                Assert.Equal(2, project.Xml.AllChildren.OfType<ProjectItemElement>().Count());
+
+                foreach (var item in items)
+                {
+                    var metadata = item.Metadata;
+
+                    Assert.Equal(1, metadata.Count);
+
+                    var m1 = metadata.ElementAt(0);
+                    Assert.Equal("M1", m1.Name);
+                    Assert.Equal("V2", m1.EvaluatedValue);
+                }
+
+                var metadataElements = items.First().Xml.Metadata;
+
+                Assert.Equal(1, metadataElements.Count);
+
+                var me1 = metadataElements.ElementAt(0);
+                Assert.Equal("M1", me1.Name);
+                Assert.Equal("V2", me1.Value);
+            }
+        }
+
+        //  TODO: Should remove tests go in project item tests, project item instance tests, or both?
         [Fact]
         public void Remove()
         {
@@ -2564,8 +2740,9 @@ namespace Microsoft.Build.UnitTests.OM.Definition
 
             List<ProjectItem> itemsFromFragmentWithGlobs;
 
-            using (var testProject = new Helpers.TestProjectWithFiles(formattedProjectContents, globFiles))
+            using (var env = TestEnvironment.Create())
             {
+                var testProject = env.CreateTestProjectWithFiles(formattedProjectContents, globFiles);
                 itemsFromFragmentWithGlobs = Helpers.MakeList(new Project(testProject.ProjectFile).GetItems("i"));
             }
 
