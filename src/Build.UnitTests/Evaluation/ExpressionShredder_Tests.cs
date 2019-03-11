@@ -439,7 +439,7 @@ namespace Microsoft.Build.UnitTests.Evaluation
         /// <param name="expected"></param>
         private void VerifySplitSemiColonSeparatedList(string input, params string[] expected)
         {
-            IList<string> actual = ExpressionShredder.SplitSemiColonSeparatedList(input);
+            var actual = ExpressionShredder.SplitSemiColonSeparatedList(input);
             Console.WriteLine(input);
 
             if (null == expected)
@@ -448,12 +448,7 @@ namespace Microsoft.Build.UnitTests.Evaluation
                 expected = new string[] { };
             }
 
-            Assert.Equal(actual.Count, expected.Length); // "Expected " + expected.Length + " items but got " + actual.Count
-
-            for (int i = 0; i < expected.Length; i++)
-            {
-                Assert.Equal(expected[i], actual[i]);
-            }
+            Assert.Equal(actual, expected, StringComparer.Ordinal);
         }
 
         private void VerifyExpression(string test)
@@ -522,7 +517,7 @@ namespace Microsoft.Build.UnitTests.Evaluation
                 Console.WriteLine(message);
             }
 
-            Assert.Equal(0, messages.Count);
+            Assert.Empty(messages);
         }
 
         private static void VerifyAgainstCanonicalResults(string test, IDictionary actual, IDictionary expected)
@@ -571,7 +566,7 @@ namespace Microsoft.Build.UnitTests.Evaluation
                 Console.WriteLine(message);
             }
 
-            Assert.Equal(0, messages.Count);
+            Assert.Empty(messages);
         }
 
         [Fact]
@@ -582,8 +577,8 @@ namespace Microsoft.Build.UnitTests.Evaluation
 
             ExpressionShredder.ItemExpressionCapture capture = expressions[0];
 
-            Assert.Equal(1, expressions.Count);
-            Assert.Equal(null, capture.Separator);
+            Assert.Single(expressions);
+            Assert.Null(capture.Separator);
             Assert.Equal("i", capture.ItemType);
             Assert.Equal("%(Meta0)", capture.Captures[0].Value);
             Assert.Equal("%(Filename)", capture.Captures[1].Value);
@@ -627,13 +622,13 @@ namespace Microsoft.Build.UnitTests.Evaluation
                         }
                         else
                         {
-                            Assert.Equal(transformGroup.Length, 0);
+                            Assert.Equal(0, transformGroup.Length);
                         }
                     }
                 }
                 else
                 {
-                    Assert.Equal(matches.Count, 0);
+                    Assert.Empty(matches);
                 }
             }
         }
@@ -659,11 +654,11 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo)";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
-            Assert.Equal(null, capture.Separator);
-            Assert.Equal(null, capture.Captures);
+            Assert.Single(expressions);
+            Assert.Null(capture.Separator);
+            Assert.Null(capture.Captures);
             Assert.Equal("Foo", capture.ItemType);
-            Assert.Equal(null, capture.Captures);
+            Assert.Null(capture.Captures);
         }
 
         [Fact]
@@ -677,11 +672,11 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo, ';')";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
-            Assert.Equal(null, capture.Captures);
+            Assert.Single(expressions);
+            Assert.Null(capture.Captures);
             Assert.Equal(";", capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
-            Assert.Equal(null, capture.Captures);
+            Assert.Null(capture.Captures);
         }
 
         [Fact]
@@ -695,11 +690,11 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo->'%(Fullpath)')";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
-            Assert.Equal(1, capture.Captures.Count);
-            Assert.Equal(null, capture.Separator);
+            Assert.Single(expressions);
+            Assert.Single(capture.Captures);
+            Assert.Null(capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
-            Assert.Equal(1, capture.Captures.Count);
+            Assert.Single(capture.Captures);
             Assert.Equal("%(Fullpath)", capture.Captures[0].Value);
         }
 
@@ -713,11 +708,11 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo->'%(Fullpath)',';')";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
-            Assert.Equal(1, capture.Captures.Count);
+            Assert.Single(expressions);
+            Assert.Single(capture.Captures);
             Assert.Equal(";", capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
-            Assert.Equal(1, capture.Captures.Count);
+            Assert.Single(capture.Captures);
             Assert.Equal("%(Fullpath)", capture.Captures[0].Value);
         }
 
@@ -732,11 +727,11 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo->Bar(a,b))";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
-            Assert.Equal(1, capture.Captures.Count);
-            Assert.Equal(null, capture.Separator);
+            Assert.Single(expressions);
+            Assert.Single(capture.Captures);
+            Assert.Null(capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
-            Assert.Equal(1, capture.Captures.Count);
+            Assert.Single(capture.Captures);
             Assert.Equal("Bar(a,b)", capture.Captures[0].Value);
             Assert.Equal("Bar", capture.Captures[0].FunctionName);
             Assert.Equal("a,b", capture.Captures[0].FunctionArguments);
@@ -752,11 +747,11 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo->Bar(a,b),';')";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
-            Assert.Equal(1, capture.Captures.Count);
+            Assert.Single(expressions);
+            Assert.Single(capture.Captures);
             Assert.Equal(";", capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
-            Assert.Equal(1, capture.Captures.Count);
+            Assert.Single(capture.Captures);
             Assert.Equal("Bar(a,b)", capture.Captures[0].Value);
             Assert.Equal("Bar", capture.Captures[0].FunctionName);
             Assert.Equal("a,b", capture.Captures[0].FunctionArguments);
@@ -772,16 +767,16 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo->Metadata('Meta0')->Directory())";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
+            Assert.Single(expressions);
             Assert.Equal(2, capture.Captures.Count);
-            Assert.Equal(null, capture.Separator);
+            Assert.Null(capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
             Assert.Equal("Metadata('Meta0')", capture.Captures[0].Value);
             Assert.Equal("Metadata", capture.Captures[0].FunctionName);
             Assert.Equal("'Meta0'", capture.Captures[0].FunctionArguments);
             Assert.Equal("Directory()", capture.Captures[1].Value);
             Assert.Equal("Directory", capture.Captures[1].FunctionName);
-            Assert.Equal(null, capture.Captures[1].FunctionArguments);
+            Assert.Null(capture.Captures[1].FunctionArguments);
         }
 
         [Fact]
@@ -794,7 +789,7 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo->Metadata('Meta0')->Directory(),';')";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
+            Assert.Single(expressions);
             Assert.Equal(2, capture.Captures.Count);
             Assert.Equal(";", capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
@@ -803,7 +798,7 @@ namespace Microsoft.Build.UnitTests.Evaluation
             Assert.Equal("'Meta0'", capture.Captures[0].FunctionArguments);
             Assert.Equal("Directory()", capture.Captures[1].Value);
             Assert.Equal("Directory", capture.Captures[1].FunctionName);
-            Assert.Equal(null, capture.Captures[1].FunctionArguments);
+            Assert.Null(capture.Captures[1].FunctionArguments);
         }
 
         [Fact]
@@ -816,16 +811,16 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo->'%(Fullpath)'->Directory(), '|')";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
+            Assert.Single(expressions);
             Assert.Equal(2, capture.Captures.Count);
             Assert.Equal("|", capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
             Assert.Equal("%(Fullpath)", capture.Captures[0].Value);
-            Assert.Equal(null, capture.Captures[0].FunctionName);
-            Assert.Equal(null, capture.Captures[0].FunctionArguments);
+            Assert.Null(capture.Captures[0].FunctionName);
+            Assert.Null(capture.Captures[0].FunctionArguments);
             Assert.Equal("Directory()", capture.Captures[1].Value);
             Assert.Equal("Directory", capture.Captures[1].FunctionName);
-            Assert.Equal(null, capture.Captures[1].FunctionArguments);
+            Assert.Null(capture.Captures[1].FunctionArguments);
         }
 
         [Fact]
@@ -838,16 +833,16 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo->'%(Fullpath)'->Directory(),';')";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
+            Assert.Single(expressions);
             Assert.Equal(2, capture.Captures.Count);
             Assert.Equal(";", capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
             Assert.Equal("%(Fullpath)", capture.Captures[0].Value);
-            Assert.Equal(null, capture.Captures[0].FunctionName);
-            Assert.Equal(null, capture.Captures[0].FunctionArguments);
+            Assert.Null(capture.Captures[0].FunctionName);
+            Assert.Null(capture.Captures[0].FunctionArguments);
             Assert.Equal("Directory()", capture.Captures[1].Value);
             Assert.Equal("Directory", capture.Captures[1].FunctionName);
-            Assert.Equal(null, capture.Captures[1].FunctionArguments);
+            Assert.Null(capture.Captures[1].FunctionArguments);
         }
 
         [Fact]
@@ -860,13 +855,13 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo->'$(SOMEPROP)%(Fullpath)')";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
-            Assert.Equal(1, capture.Captures.Count);
-            Assert.Equal(null, capture.Separator);
+            Assert.Single(expressions);
+            Assert.Single(capture.Captures);
+            Assert.Null(capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
             Assert.Equal("$(SOMEPROP)%(Fullpath)", capture.Captures[0].Value);
-            Assert.Equal(null, capture.Captures[0].FunctionName);
-            Assert.Equal(null, capture.Captures[0].FunctionArguments);
+            Assert.Null(capture.Captures[0].FunctionName);
+            Assert.Null(capture.Captures[0].FunctionArguments);
         }
 
         [Fact]
@@ -879,13 +874,13 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo->'%(Filename)'->Substring($(Val), $(Boo)))";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
+            Assert.Single(expressions);
             Assert.Equal(2, capture.Captures.Count);
-            Assert.Equal(null, capture.Separator);
+            Assert.Null(capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
             Assert.Equal("%(Filename)", capture.Captures[0].Value);
-            Assert.Equal(null, capture.Captures[0].FunctionName);
-            Assert.Equal(null, capture.Captures[0].FunctionArguments);
+            Assert.Null(capture.Captures[0].FunctionName);
+            Assert.Null(capture.Captures[0].FunctionArguments);
             Assert.Equal("Substring($(Val), $(Boo))", capture.Captures[1].Value);
             Assert.Equal("Substring", capture.Captures[1].FunctionName);
             Assert.Equal("$(Val), $(Boo)", capture.Captures[1].FunctionArguments);
@@ -901,13 +896,13 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo->'%(Filename)'->Substring(\"AA\", 'BB', `cc`))";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
+            Assert.Single(expressions);
             Assert.Equal(2, capture.Captures.Count);
-            Assert.Equal(null, capture.Separator);
+            Assert.Null(capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
             Assert.Equal("%(Filename)", capture.Captures[0].Value);
-            Assert.Equal(null, capture.Captures[0].FunctionName);
-            Assert.Equal(null, capture.Captures[0].FunctionArguments);
+            Assert.Null(capture.Captures[0].FunctionName);
+            Assert.Null(capture.Captures[0].FunctionArguments);
             Assert.Equal("Substring(\"AA\", 'BB', `cc`)", capture.Captures[1].Value);
             Assert.Equal("Substring", capture.Captures[1].FunctionName);
             Assert.Equal("\"AA\", 'BB', `cc`", capture.Captures[1].FunctionArguments);
@@ -923,13 +918,13 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo->'%(Filename)'->Substring('()', $(Boo), ')('))";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
+            Assert.Single(expressions);
             Assert.Equal(2, capture.Captures.Count);
-            Assert.Equal(null, capture.Separator);
+            Assert.Null(capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
             Assert.Equal("%(Filename)", capture.Captures[0].Value);
-            Assert.Equal(null, capture.Captures[0].FunctionName);
-            Assert.Equal(null, capture.Captures[0].FunctionArguments);
+            Assert.Null(capture.Captures[0].FunctionName);
+            Assert.Null(capture.Captures[0].FunctionArguments);
             Assert.Equal("Substring('()', $(Boo), ')(')", capture.Captures[1].Value);
             Assert.Equal("Substring", capture.Captures[1].FunctionName);
             Assert.Equal("'()', $(Boo), ')('", capture.Captures[1].FunctionArguments);
@@ -945,13 +940,13 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo->'%(Filename)'->Substring(`()`, $(Boo), \"AA\"))";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
+            Assert.Single(expressions);
             Assert.Equal(2, capture.Captures.Count);
-            Assert.Equal(null, capture.Separator);
+            Assert.Null(capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
             Assert.Equal("%(Filename)", capture.Captures[0].Value);
-            Assert.Equal(null, capture.Captures[0].FunctionName);
-            Assert.Equal(null, capture.Captures[0].FunctionArguments);
+            Assert.Null(capture.Captures[0].FunctionName);
+            Assert.Null(capture.Captures[0].FunctionArguments);
             Assert.Equal("Substring(`()`, $(Boo), \"AA\")", capture.Captures[1].Value);
             Assert.Equal("Substring", capture.Captures[1].FunctionName);
             Assert.Equal("`()`, $(Boo), \"AA\"", capture.Captures[1].FunctionArguments);
@@ -967,13 +962,13 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo->'%(Filename)'->Substring(`()`, $(Boo), \")(\"))";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
+            Assert.Single(expressions);
             Assert.Equal(2, capture.Captures.Count);
-            Assert.Equal(null, capture.Separator);
+            Assert.Null(capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
             Assert.Equal("%(Filename)", capture.Captures[0].Value);
-            Assert.Equal(null, capture.Captures[0].FunctionName);
-            Assert.Equal(null, capture.Captures[0].FunctionArguments);
+            Assert.Null(capture.Captures[0].FunctionName);
+            Assert.Null(capture.Captures[0].FunctionArguments);
             Assert.Equal("Substring(`()`, $(Boo), \")(\")", capture.Captures[1].Value);
             Assert.Equal("Substring", capture.Captures[1].FunctionName);
             Assert.Equal("`()`, $(Boo), \")(\"", capture.Captures[1].FunctionArguments);
@@ -989,13 +984,13 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expression = "@(Foo->'%(Filename)'->Substring(\"()\", $(Boo), `)(`))";
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             capture = expressions[0];
-            Assert.Equal(1, expressions.Count);
+            Assert.Single(expressions);
             Assert.Equal(2, capture.Captures.Count);
-            Assert.Equal(null, capture.Separator);
+            Assert.Null(capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
             Assert.Equal("%(Filename)", capture.Captures[0].Value);
-            Assert.Equal(null, capture.Captures[0].FunctionName);
-            Assert.Equal(null, capture.Captures[0].FunctionArguments);
+            Assert.Null(capture.Captures[0].FunctionName);
+            Assert.Null(capture.Captures[0].FunctionArguments);
             Assert.Equal("Substring(\"()\", $(Boo), `)(`)", capture.Captures[1].Value);
             Assert.Equal("Substring", capture.Captures[1].FunctionName);
             Assert.Equal("\"()\", $(Boo), `)(`", capture.Captures[1].FunctionArguments);
@@ -1013,13 +1008,13 @@ namespace Microsoft.Build.UnitTests.Evaluation
             capture = expressions[1];
             Assert.Equal(2, expressions.Count);
             Assert.Equal("Bar", expressions[0].ItemType);
-            Assert.Equal(null, expressions[0].Captures);
+            Assert.Null(expressions[0].Captures);
             Assert.Equal(2, capture.Captures.Count);
-            Assert.Equal(null, capture.Separator);
+            Assert.Null(capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
             Assert.Equal("%(Filename)", capture.Captures[0].Value);
-            Assert.Equal(null, capture.Captures[0].FunctionName);
-            Assert.Equal(null, capture.Captures[0].FunctionArguments);
+            Assert.Null(capture.Captures[0].FunctionName);
+            Assert.Null(capture.Captures[0].FunctionArguments);
             Assert.Equal("Substring(\"()\", $(Boo), `)(`)", capture.Captures[1].Value);
             Assert.Equal("Substring", capture.Captures[1].FunctionName);
             Assert.Equal("\"()\", $(Boo), `)(`", capture.Captures[1].FunctionArguments);
@@ -1037,13 +1032,13 @@ namespace Microsoft.Build.UnitTests.Evaluation
             capture = expressions[0];
             Assert.Equal(2, expressions.Count);
             Assert.Equal("Bar", expressions[1].ItemType);
-            Assert.Equal(null, expressions[1].Captures);
+            Assert.Null(expressions[1].Captures);
             Assert.Equal(2, capture.Captures.Count);
-            Assert.Equal(null, capture.Separator);
+            Assert.Null(capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
             Assert.Equal("%(Filename)", capture.Captures[0].Value);
-            Assert.Equal(null, capture.Captures[0].FunctionName);
-            Assert.Equal(null, capture.Captures[0].FunctionArguments);
+            Assert.Null(capture.Captures[0].FunctionName);
+            Assert.Null(capture.Captures[0].FunctionArguments);
             Assert.Equal("Substring(\"()\", $(Boo), `)(`)", capture.Captures[1].Value);
             Assert.Equal("Substring", capture.Captures[1].FunctionName);
             Assert.Equal("\"()\", $(Boo), `)(`", capture.Captures[1].FunctionArguments);
@@ -1061,13 +1056,13 @@ namespace Microsoft.Build.UnitTests.Evaluation
             capture = expressions[0];
             Assert.Equal(2, expressions.Count);
             Assert.Equal("Bar", expressions[1].ItemType);
-            Assert.Equal(null, expressions[1].Captures);
+            Assert.Null(expressions[1].Captures);
             Assert.Equal(2, capture.Captures.Count);
-            Assert.Equal(null, capture.Separator);
+            Assert.Null(capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
             Assert.Equal("%(Filename)", capture.Captures[0].Value);
-            Assert.Equal(null, capture.Captures[0].FunctionName);
-            Assert.Equal(null, capture.Captures[0].FunctionArguments);
+            Assert.Null(capture.Captures[0].FunctionName);
+            Assert.Null(capture.Captures[0].FunctionArguments);
             Assert.Equal("Substring(\"()\", $(Boo), `)(`)", capture.Captures[1].Value);
             Assert.Equal("Substring", capture.Captures[1].FunctionName);
             Assert.Equal("\"()\", $(Boo), `)(`", capture.Captures[1].FunctionArguments);
@@ -1085,13 +1080,13 @@ namespace Microsoft.Build.UnitTests.Evaluation
             capture = expressions[0];
             Assert.Equal(2, expressions.Count);
             Assert.Equal("Bar", expressions[1].ItemType);
-            Assert.Equal(null, expressions[1].Captures);
+            Assert.Null(expressions[1].Captures);
             Assert.Equal(2, capture.Captures.Count);
-            Assert.Equal(null, capture.Separator);
+            Assert.Null(capture.Separator);
             Assert.Equal("Foo", capture.ItemType);
             Assert.Equal("%(Filename)", capture.Captures[0].Value);
-            Assert.Equal(null, capture.Captures[0].FunctionName);
-            Assert.Equal(null, capture.Captures[0].FunctionArguments);
+            Assert.Null(capture.Captures[0].FunctionName);
+            Assert.Null(capture.Captures[0].FunctionArguments);
             Assert.Equal("Substring(\"()\", $(Boo), `)(\"`)", capture.Captures[1].Value);
             Assert.Equal("Substring", capture.Captures[1].FunctionName);
             Assert.Equal("\"()\", $(Boo), `)(\"`", capture.Captures[1].FunctionArguments);
@@ -1108,19 +1103,19 @@ namespace Microsoft.Build.UnitTests.Evaluation
             expressions = ExpressionShredder.GetReferencedItemExpressions(expression);
             Assert.Equal(5, expressions.Count);
             Assert.Equal("foo", expressions[0].ItemType);
-            Assert.Equal(null, expressions[0].Separator);
+            Assert.Null(expressions[0].Separator);
 
             Assert.Equal("foo", expressions[1].ItemType);
             Assert.Equal("-", expressions[1].Separator);
 
             Assert.Equal("foo", expressions[2].ItemType);
-            Assert.Equal(null, expressions[2].Separator);
+            Assert.Null(expressions[2].Separator);
 
             Assert.Equal("foo", expressions[3].ItemType);
             Assert.Equal(",", expressions[3].Separator);
 
             Assert.Equal("foo", expressions[4].ItemType);
-            Assert.Equal(null, expressions[4].Separator);
+            Assert.Null(expressions[4].Separator);
         }
 
         #region Original code to produce canonical results

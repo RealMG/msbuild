@@ -1,9 +1,5 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Tests for ProjectRootElementCache</summary>
-//-----------------------------------------------------------------------
 
 using System.Collections.Generic;
 using Microsoft.Build.Execution;
@@ -87,12 +83,10 @@ namespace Microsoft.Build.UnitTests.OM.Evaluation
         /// <summary>
         /// Tests that a strong reference is held to a single item
         /// </summary>
-#if MONO
-        [Fact(Skip = "https://github.com/Microsoft/msbuild/issues/282")]
-#else
         [Fact]
-#endif
-
+        //  This test fails on .NET Core and Mono: https://github.com/Microsoft/msbuild/issues/282
+        [Trait("Category", "non-mono-tests")]
+        [SkipOnTargetFramework(TargetFrameworkMonikers.Netcoreapp, "https://github.com/Microsoft/msbuild/issues/282")]
         public void AddEntryStrongReference()
         {
             string projectPath = NativeMethodsShared.IsUnixLike ? "/foo" : "c:\\foo";
@@ -133,12 +127,12 @@ namespace Microsoft.Build.UnitTests.OM.Evaluation
                 cache.AddEntry(xml0);
 
                 ProjectRootElement xml1 = cache.TryGet(path);
-                Assert.Equal(true, Object.ReferenceEquals(xml0, xml1));
+                Assert.True(Object.ReferenceEquals(xml0, xml1));
 
                 File.SetLastWriteTime(path, DateTime.Now + new TimeSpan(1, 0, 0));
 
                 ProjectRootElement xml2 = cache.TryGet(path);
-                Assert.Equal(false, Object.ReferenceEquals(xml0, xml2));
+                Assert.False(Object.ReferenceEquals(xml0, xml2));
             }
             finally
             {
@@ -167,12 +161,12 @@ namespace Microsoft.Build.UnitTests.OM.Evaluation
                 cache.AddEntry(xml0);
 
                 ProjectRootElement xml1 = cache.TryGet(path);
-                Assert.Equal(true, Object.ReferenceEquals(xml0, xml1));
+                Assert.True(Object.ReferenceEquals(xml0, xml1));
 
                 File.SetLastWriteTime(path, DateTime.Now + new TimeSpan(1, 0, 0));
 
                 ProjectRootElement xml2 = cache.TryGet(path);
-                Assert.Equal(true, Object.ReferenceEquals(xml0, xml2));
+                Assert.True(Object.ReferenceEquals(xml0, xml2));
             }
             finally
             {

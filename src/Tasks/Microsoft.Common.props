@@ -29,10 +29,6 @@ Copyright (C) Microsoft Corporation. All rights reserved.
     <DirectoryBuildPropsPath Condition="'$(_DirectoryBuildPropsBasePath)' != '' and '$(_DirectoryBuildPropsFile)' != ''">$([System.IO.Path]::Combine('$(_DirectoryBuildPropsBasePath)', '$(_DirectoryBuildPropsFile)'))</DirectoryBuildPropsPath>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(ImportDirectoryBuildProps)' == 'true' and exists('$(DirectoryBuildPropsPath)')">
-    <MSBuildAllProjects>$(MSBuildAllProjects);$(DirectoryBuildPropsPath)</MSBuildAllProjects>
-  </PropertyGroup>
-
   <Import Project="$(DirectoryBuildPropsPath)" Condition="'$(ImportDirectoryBuildProps)' == 'true' and exists('$(DirectoryBuildPropsPath)')"/>
 
   <!-- 
@@ -49,6 +45,8 @@ Copyright (C) Microsoft Corporation. All rights reserved.
         -->
     <BaseIntermediateOutputPath Condition="'$(BaseIntermediateOutputPath)'=='' ">obj\</BaseIntermediateOutputPath>
     <BaseIntermediateOutputPath Condition="!HasTrailingSlash('$(BaseIntermediateOutputPath)')">$(BaseIntermediateOutputPath)\</BaseIntermediateOutputPath>
+    <_InitialBaseIntermediateOutputPath>$(BaseIntermediateOutputPath)</_InitialBaseIntermediateOutputPath>
+
     <MSBuildProjectExtensionsPath Condition="'$(MSBuildProjectExtensionsPath)' == '' ">$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
     <!--
         Import paths that are relative default to be relative to the importing file.  However, since MSBuildExtensionsPath
@@ -58,6 +56,7 @@ Copyright (C) Microsoft Corporation. All rights reserved.
     <MSBuildProjectExtensionsPath Condition="'$([System.IO.Path]::IsPathRooted($(MSBuildProjectExtensionsPath)))' == 'false'">$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(MSBuildProjectExtensionsPath)'))</MSBuildProjectExtensionsPath>
     <MSBuildProjectExtensionsPath Condition="!HasTrailingSlash('$(MSBuildProjectExtensionsPath)')">$(MSBuildProjectExtensionsPath)\</MSBuildProjectExtensionsPath>
     <ImportProjectExtensionProps Condition="'$(ImportProjectExtensionProps)' == ''">true</ImportProjectExtensionProps>
+    <_InitialMSBuildProjectExtensionsPath Condition=" '$(ImportProjectExtensionProps)' == 'true' ">$(MSBuildProjectExtensionsPath)</_InitialMSBuildProjectExtensionsPath>
   </PropertyGroup>
 
   <Import Project="$(MSBuildProjectExtensionsPath)$(MSBuildProjectFile).*.props" Condition="'$(ImportProjectExtensionProps)' == 'true' and exists('$(MSBuildProjectExtensionsPath)')" />
@@ -148,6 +147,16 @@ Copyright (C) Microsoft Corporation. All rights reserved.
   </PropertyGroup>
 
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.VisualStudioVersion.v*.Common.props" Condition="'$(VisualStudioVersion)' == ''" />
+
+  <!--
+    Properties for extension of ProjectReferenceTargets.
+    Append any current value which may have been provided in a Directory.Build.props since the intent was likely to append, not prepend.
+  -->
+  <PropertyGroup>
+    <ProjectReferenceTargetsForBuild>GetTargetFrameworks;.default;GetNativeManifest;GetCopyToOutputDirectoryItems;$(ProjectReferenceTargetsForBuild)</ProjectReferenceTargetsForBuild>
+    <ProjectReferenceTargetsForClean>GetTargetFrameworks;Clean;$(ProjectReferenceTargetsForClean)</ProjectReferenceTargetsForClean>
+    <ProjectReferenceTargetsForRebuild>$(ProjectReferenceTargetsForBuild);$(ProjectReferenceTargetsForClean);$(ProjectReferenceTargetsForRebuild)</ProjectReferenceTargetsForRebuild>
+  </PropertyGroup>
 
   <!-- 
          Only import the extension targets if we're actually in a 12.0 project here (rather than one we're attempting 

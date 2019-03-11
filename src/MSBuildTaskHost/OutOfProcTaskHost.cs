@@ -1,10 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Entry point class for MSBuildTaskHost.exe, which serves as the 
-// task host executable for CLR 2 tasks.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
@@ -88,13 +83,20 @@ namespace Microsoft.Build.CommandLine
         /// </returns>
         internal static ExitType Execute()
         {
-#if FEATURE_DEBUG_LAUNCH
-            // Provide Hook for debugger
-            if (Environment.GetEnvironmentVariable("MSBUILDDEBUGONSTART") == "1")
+            switch (Environment.GetEnvironmentVariable("MSBUILDDEBUGONSTART"))
             {
-                Debugger.Launch();
-            }
+#if FEATURE_DEBUG_LAUNCH
+                case "1":
+                    Debugger.Launch();
+                    break;
 #endif
+                case "2":
+                    // Sometimes easier to attach rather than deal with JIT prompt
+                    Process currentProcess = Process.GetCurrentProcess();
+                    Console.WriteLine($"Waiting for debugger to attach ({currentProcess.MainModule.FileName} PID {currentProcess.Id}).  Press enter to continue...");
+                    Console.ReadLine();
+                    break;
+            }
 
             bool restart = false;
             do

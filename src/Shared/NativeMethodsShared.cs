@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
@@ -13,10 +13,17 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Reflection;
+using Microsoft.Win32;
 using Microsoft.Win32.SafeHandles;
 
 using FILETIME = System.Runtime.InteropServices.ComTypes.FILETIME;
 using Microsoft.Build.Utilities;
+
+#if MICROSOFT_BUILD_TASKS
+using MSBuildConstants = Microsoft.Build.Tasks.MSBuildConstants;
+#else
+using MSBuildConstants = Microsoft.Build.Shared.MSBuildConstants;
+#endif
 
 namespace Microsoft.Build.Shared
 {
@@ -44,8 +51,18 @@ namespace Microsoft.Build.Shared
         internal const int FILE_ATTRIBUTE_DIRECTORY = 0x00000010;
         internal const int FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400;
 
+        /// <summary>
+        /// Default buffer size to use when dealing with the Windows API.
+        /// </summary>
+        internal const int MAX_PATH = 260;
+
         private const string kernel32Dll = "kernel32.dll";
         private const string mscoreeDLL = "mscoree.dll";
+
+        private const string WINDOWS_FILE_SYSTEM_REGISTRY_KEY = @"SYSTEM\CurrentControlSet\Control\FileSystem";
+        private const string WINDOWS_LONG_PATHS_ENABLED_VALUE_NAME = "LongPathsEnabled";
+
+        internal static DateTime MinFileDate { get; } = DateTime.FromFileTimeUtc(0);
 
 #if FEATURE_HANDLEREF
         internal static HandleRef NullHandleRef = new HandleRef(null, IntPtr.Zero);
@@ -210,10 +227,6 @@ namespace Microsoft.Build.Shared
             {
                 return CloseHandle(handle);
             }
-
-            [SuppressMessage("Microsoft.Design", "CA1060:MovePInvokesToNativeMethodsClass", Justification = "Class name is NativeMethodsShared for increased clarity")]
-            [DllImport("KERNEL32.DLL")]
-            private static extern bool CloseHandle(IntPtr hObject);
         }
 
         /// <summary>
@@ -287,16 +300,22 @@ namespace Microsoft.Build.Shared
         [StructLayout(LayoutKind.Sequential)]
         private struct PROCESS_BASIC_INFORMATION
         {
-            public IntPtr ExitStatus;
+            public uint ExitStatus;
             public IntPtr PebBaseAddress;
-            public IntPtr AffinityMask;
-            public IntPtr BasePriority;
-            public IntPtr UniqueProcessId;
-            public IntPtr InheritedFromUniqueProcessId;
+            public UIntPtr AffinityMask;
+            public int BasePriority;
+            public UIntPtr UniqueProcessId;
+            public UIntPtr InheritedFromUniqueProcessId;
 
-            public int Size
+            public uint Size
             {
-                get { return (6 * IntPtr.Size); }
+                get
+                {
+                    unsafe
+                    {
+                        return (uint)sizeof(PROCESS_BASIC_INFORMATION);
+                    }
+                }
             }
         };
 
@@ -455,29 +474,77 @@ namespace Microsoft.Build.Shared
 
         #region Member data
 
+        internal static bool HasMaxPath => MaxPath == MAX_PATH;
+
         /// <summary>
-        /// Default buffer size to use when dealing with the Windows API.
+        /// Gets the max path limit of the current OS.
         /// </summary>
-        /// <remarks>
-        /// This member is intentionally not a constant because we want to allow
-        /// unit tests to change it.
-        /// </remarks>
-        internal static int MAX_PATH = 260;
+        internal static int MaxPath
+        {
+            get
+            {
+                if (!IsMaxPathSet)
+                {
+                    SetMaxPath();
+                }
+                return _maxPath;
+            }
+        }
+
+        /// <summary>
+        /// Cached value for MaxPath.
+        /// </summary>
+        private static int _maxPath;
+
+        private static bool IsMaxPathSet { get; set; }
+
+        private static readonly object MaxPathLock = new object();
+
+        private static void SetMaxPath()
+        {
+            lock (MaxPathLock)
+            {
+                if (!IsMaxPathSet)
+                {
+                    bool isMaxPathRestricted = Traits.Instance.EscapeHatches.DisableLongPaths || IsMaxPathLegacyWindows();
+                    _maxPath = isMaxPathRestricted ? MAX_PATH : int.MaxValue;
+                    IsMaxPathSet = true;
+                }
+            }
+        }
+
+        private static bool IsMaxPathLegacyWindows()
+        {
+            try
+            {
+                return IsWindows && !IsLongPathsEnabledRegistry();
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        private static bool IsLongPathsEnabledRegistry()
+        {
+            using (RegistryKey fileSystemKey = Registry.LocalMachine.OpenSubKey(WINDOWS_FILE_SYSTEM_REGISTRY_KEY))
+            {
+                object longPathsEnabledValue = fileSystemKey?.GetValue(WINDOWS_LONG_PATHS_ENABLED_VALUE_NAME, 0);
+                return fileSystemKey != null && Convert.ToInt32(longPathsEnabledValue) == 1;
+            }
+        }
+
+        /// <summary>
+        /// Cached value for IsUnixLike (this method is called frequently during evaluation).
+        /// </summary>
+        private static readonly bool s_isUnixLike = IsLinux || IsOSX || IsBSD;
 
         /// <summary>
         /// Gets a flag indicating if we are running under a Unix-like system (Mac, Linux, etc.)
         /// </summary>
         internal static bool IsUnixLike
         {
-            get
-            {
-#if FEATURE_OSVERSION
-                var env = Environment.OSVersion.Platform;
-                return env == PlatformID.MacOSX || env == PlatformID.Unix;
-#else
-                return IsLinux || IsOSX;
-#endif
-            }
+            get { return s_isUnixLike; }
         }
 
         /// <summary>
@@ -485,14 +552,28 @@ namespace Microsoft.Build.Shared
         /// </summary>
         internal static bool IsLinux
         {
+#if CLR2COMPATIBILITY
+            get { return false; }
+#else
+            get { return RuntimeInformation.IsOSPlatform(OSPlatform.Linux); }
+#endif
+        }
+
+        /// <summary>
+        /// Gets a flag indicating if we are running under flavor of BSD (NetBSD, OpenBSD, FreeBSD)
+        /// </summary>
+        internal static bool IsBSD
+        {
+#if CLR2COMPATIBILITY
+            get { return false; }
+#else
             get
             {
-#if FEATURE_OSVERSION
-                return Environment.OSVersion.Platform == PlatformID.Unix;
-#else
-                return RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
-#endif
+                return RuntimeInformation.IsOSPlatform(OSPlatform.Create("FREEBSD")) ||
+                       RuntimeInformation.IsOSPlatform(OSPlatform.Create("NETBSD")) ||
+                       RuntimeInformation.IsOSPlatform(OSPlatform.Create("OPENBSD"));
             }
+#endif
         }
 
         private static readonly object IsMonoLock = new object();
@@ -523,36 +604,51 @@ namespace Microsoft.Build.Shared
             }
         }
 
+#if !CLR2COMPATIBILITY
+        private static bool? _isWindows;
+#endif
+
         /// <summary>
         /// Gets a flag indicating if we are running under some version of Windows
         /// </summary>
         internal static bool IsWindows
         {
-            get
-            {
-#if FEATURE_OSVERSION
-                return !IsUnixLike;
+#if CLR2COMPATIBILITY
+            get { return true; }
 #else
-                return RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-#endif
+            get {
+                if (_isWindows == null)
+                {
+                    _isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+                }
+                return _isWindows.Value;
             }
+#endif
         }
 
+#if MONO
+        private static bool? _isOSX;
+#endif
         /// <summary>
         /// Gets a flag indicating if we are running under Mac OSX
         /// </summary>
         internal static bool IsOSX
         {
+#if MONO
             get
             {
-#if MONO
-                return File.Exists("/usr/lib/libc.dylib");
-#elif FEATURE_OSVERSION
-                return Environment.OSVersion.Platform == PlatformID.MacOSX;
-#else
-                return RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
-#endif
+                if (!_isOSX.HasValue)
+                {
+                    _isOSX = File.Exists("/usr/lib/libc.dylib");
+                }
+
+                return _isOSX.Value;
             }
+#elif CLR2COMPATIBILITY
+            get { return false; }
+#else
+            get { return RuntimeInformation.IsOSPlatform(OSPlatform.OSX); }
+#endif
         }
 
         /// <summary>
@@ -561,10 +657,7 @@ namespace Microsoft.Build.Shared
         /// </summary>
         internal static string OSName
         {
-            get
-            {
-                return IsWindows ? "Windows_NT" : "Unix";
-            }
+            get { return IsWindows ? "Windows_NT" : "Unix"; }
         }
 
         /// <summary>
@@ -573,7 +666,7 @@ namespace Microsoft.Build.Shared
         /// </summary>
         internal static string GetOSNameForExtensionsPath()
         {
-            return IsOSX ? "osx" : (IsLinux ? "unix" : "windows");
+            return IsOSX ? "osx" : IsUnixLike ? "unix" : "windows";
         }
 
         /// <summary>
@@ -668,9 +761,9 @@ namespace Microsoft.Build.Shared
         /// </summary>
         internal static ProcessorArchitectures ProcessorArchitectureNative => SystemInformation.ProcessorArchitectureTypeNative;
 
-        #endregion
+#endregion
 
-        #region Set Error Mode (copied from BCL)
+#region Set Error Mode (copied from BCL)
 
         private static readonly Version s_threadErrorModeMinOsVersion = new Version(6, 1, 0x1db0);
 
@@ -695,9 +788,9 @@ namespace Microsoft.Build.Shared
         [DllImport("kernel32.dll", EntryPoint = "SetErrorMode", ExactSpelling = true)]
         private static extern int SetErrorMode_VistaAndOlder(int newMode);
 
-        #endregion
+#endregion
 
-        #region Wrapper methods
+#region Wrapper methods
 
         /// <summary>
         /// Really truly non pumping wait.
@@ -726,11 +819,10 @@ namespace Microsoft.Build.Shared
         {
             // This code was copied from the reference manager, if there is a bug fix in that code, see if the same fix should also be made
             // there
-
-            fileModifiedTimeUtc = DateTime.MinValue;
-
             if (IsWindows)
             {
+                fileModifiedTimeUtc = DateTime.MinValue;
+
                 WIN32_FILE_ATTRIBUTE_DATA data = new WIN32_FILE_ATTRIBUTE_DATA();
                 bool success = false;
 
@@ -752,8 +844,16 @@ namespace Microsoft.Build.Shared
                 return success;
             }
 
-            fileModifiedTimeUtc = Directory.GetLastWriteTimeUtc(fullPath);
-            return true;
+            if (Directory.Exists(fullPath))
+            {
+                fileModifiedTimeUtc = Directory.GetLastWriteTimeUtc(fullPath);
+                return true;
+            }
+            else
+            {
+                fileModifiedTimeUtc = DateTime.MinValue;
+                return false;
+            }
         }
 
         /// <summary>
@@ -878,7 +978,7 @@ namespace Microsoft.Build.Shared
 
                 success = NativeMethodsShared.GetFileAttributesEx(fullPath, 0, ref data);
 
-                if (success)
+                if (success && (data.fileAttributes & NativeMethodsShared.FILE_ATTRIBUTE_DIRECTORY) == 0)
                 {
                     long dt = ((long)(data.ftLastWriteTimeHigh) << 32) | ((long)data.ftLastWriteTimeLow);
                     fileModifiedTime = DateTime.FromFileTimeUtc(dt);
@@ -889,13 +989,15 @@ namespace Microsoft.Build.Shared
                         fileModifiedTime = GetContentLastWriteFileUtcTime(fullPath);
                     }
                 }
-            }
-            else if (File.Exists(fullPath))
-            {
-                fileModifiedTime = File.GetLastWriteTimeUtc(fullPath);
-            }
 
-            return fileModifiedTime;
+                return fileModifiedTime;
+            }
+            else
+            {
+                return File.Exists(fullPath)
+                        ? File.GetLastWriteTimeUtc(fullPath)
+                        : DateTime.MinValue;
+            }
         }
 
         /// <summary>
@@ -1081,7 +1183,7 @@ namespace Microsoft.Build.Shared
                     // One of the fields is the process name. It may contain any characters, but since it's
                     // in parenthesis, we can finds its end by looking for the last parenthesis. After that,
                     // there comes a space, then the second fields separated by a space is the parent id.
-                    string[] statFields = line.Substring(line.LastIndexOf(')')).Split(new[] { ' ' }, 4);
+                    string[] statFields = line.Substring(line.LastIndexOf(')')).Split(MSBuildConstants.SpaceChar, 4);
                     if (statFields.Length >= 3)
                     {
                         ParentID = Int32.Parse(statFields[2]);
@@ -1171,22 +1273,81 @@ namespace Microsoft.Build.Shared
         /// Internal, optimized GetCurrentDirectory implementation that simply delegates to the native method
         /// </summary>
         /// <returns></returns>
-        internal static string GetCurrentDirectory()
+        internal unsafe static string GetCurrentDirectory()
         {
+#if FEATURE_LEGACY_GETCURRENTDIRECTORY
             if (IsWindows)
             {
-                StringBuilder sb = new StringBuilder(MAX_PATH);
-                int pathLength = GetCurrentDirectory(MAX_PATH, sb);
-
-                return pathLength > 0 ? sb.ToString() : null;
+                int bufferSize = GetCurrentDirectoryWin32(0, null);
+                char* buffer = stackalloc char[bufferSize];
+                int pathLength = GetCurrentDirectoryWin32(bufferSize, buffer);
+                return new string(buffer, startIndex: 0, length: pathLength);
             }
-
+#endif
             return Directory.GetCurrentDirectory();
         }
 
-        #endregion
+        private unsafe static int GetCurrentDirectoryWin32(int nBufferLength, char* lpBuffer)
+        {
+            int pathLength = GetCurrentDirectory(nBufferLength, lpBuffer);
+            VerifyThrowWin32Result(pathLength);
+            return pathLength;
+        }
 
-        #region PInvoke
+        internal unsafe static string GetFullPath(string path)
+        {
+            int bufferSize = GetFullPathWin32(path, 0, null, IntPtr.Zero);
+            char* buffer = stackalloc char[bufferSize];
+            int fullPathLength = GetFullPathWin32(path, bufferSize, buffer, IntPtr.Zero);
+            // Avoid creating new strings unnecessarily
+            return AreStringsEqual(buffer, fullPathLength, path) ? path : new string(buffer, startIndex: 0, length: fullPathLength);
+        }
+
+        private unsafe static int GetFullPathWin32(string target, int bufferLength, char* buffer, IntPtr mustBeZero)
+        {
+            int pathLength = GetFullPathName(target, bufferLength, buffer, mustBeZero);
+            VerifyThrowWin32Result(pathLength);
+            return pathLength;
+        }
+
+        /// <summary>
+        /// Compare an unsafe char buffer with a <see cref="System.String"/> to see if their contents are identical.
+        /// </summary>
+        /// <param name="buffer">The beginning of the char buffer.</param>
+        /// <param name="len">The length of the buffer.</param>
+        /// <param name="s">The string.</param>
+        /// <returns>True only if the contents of <paramref name="s"/> and the first <paramref name="len"/> characters in <paramref name="buffer"/> are identical.</returns>
+        private unsafe static bool AreStringsEqual(char* buffer, int len, string s)
+        {
+            if (len != s.Length)
+            {
+                return false;
+            }
+
+            foreach (char ch in s)
+            {
+                if (ch != *buffer++)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        internal static void VerifyThrowWin32Result(int result)
+        {
+            bool isError = result == 0;
+            if (isError)
+            {
+                int code = Marshal.GetLastWin32Error();
+                ThrowExceptionForErrorCode(code);
+            }
+        }
+
+#endregion
+
+#region PInvoke
 
         /// <summary>
         /// Gets the current OEM code page which is used by console apps
@@ -1266,7 +1427,7 @@ namespace Microsoft.Build.Shared
         [SuppressMessage("Microsoft.Design", "CA1060:MovePInvokesToNativeMethodsClass", Justification = "Class name is NativeMethodsShared for increased clarity")]
         [SuppressMessage("Microsoft.Usage", "CA2205:UseManagedEquivalentsOfWin32Api", Justification = "Using unmanaged equivalent for performance reasons")]
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        internal static extern int GetCurrentDirectory(int nBufferLength, [Out] StringBuilder lpBuffer);
+        internal unsafe static extern int GetCurrentDirectory(int nBufferLength, char* lpBuffer);
 
         [SuppressMessage("Microsoft.Design", "CA1060:MovePInvokesToNativeMethodsClass", Justification = "Class name is NativeMethodsShared for increased clarity")]
         [SuppressMessage("Microsoft.Usage", "CA2205:UseManagedEquivalentsOfWin32Api", Justification = "Using unmanaged equivalent for performance reasons")]
@@ -1302,7 +1463,7 @@ namespace Microsoft.Build.Shared
 
         [SuppressMessage("Microsoft.Design", "CA1060:MovePInvokesToNativeMethodsClass", Justification = "Class name is NativeMethodsShared for increased clarity")]
         [DllImport("NTDLL.DLL")]
-        private static extern int NtQueryInformationProcess(SafeProcessHandle hProcess, PROCESSINFOCLASS pic, ref PROCESS_BASIC_INFORMATION pbi, int cb, ref int pSize);
+        private static extern int NtQueryInformationProcess(SafeProcessHandle hProcess, PROCESSINFOCLASS pic, ref PROCESS_BASIC_INFORMATION pbi, uint cb, ref int pSize);
 
         [SuppressMessage("Microsoft.Design", "CA1060:MovePInvokesToNativeMethodsClass", Justification = "Class name is NativeMethodsShared for increased clarity")]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -1360,9 +1521,14 @@ namespace Microsoft.Build.Shared
             out FILETIME lpLastWriteTime
             );
 
-        #endregion
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
 
-        #region Extensions
+        internal static extern bool CloseHandle(IntPtr hObject);
+
+#endregion
+
+#region Extensions
 
         /// <summary>
         /// Waits while pumping APC messages.  This is important if the waiting thread is an STA thread which is potentially
@@ -1408,7 +1574,46 @@ namespace Microsoft.Build.Shared
 
 #region helper methods
 
-        internal static bool FileExists(string path)
+        internal static bool DirectoryExists(string fullPath)
+        {
+            return NativeMethodsShared.IsWindows
+                ? DirectoryExistsWindows(fullPath)
+                : Directory.Exists(fullPath);
+        }
+
+        internal static bool DirectoryExistsWindows(string fullPath)
+        {
+            NativeMethodsShared.WIN32_FILE_ATTRIBUTE_DATA data = new NativeMethodsShared.WIN32_FILE_ATTRIBUTE_DATA();
+            bool success = false;
+
+            success = NativeMethodsShared.GetFileAttributesEx(fullPath, 0, ref data);
+            return success && (data.fileAttributes & NativeMethodsShared.FILE_ATTRIBUTE_DIRECTORY) != 0;
+        }
+
+        internal static bool FileExists(string fullPath)
+        {
+            return NativeMethodsShared.IsWindows
+                ? FileExistsWindows(fullPath)
+                : File.Exists(fullPath);
+        }
+
+        internal static bool FileExistsWindows(string fullPath)
+        {
+            NativeMethodsShared.WIN32_FILE_ATTRIBUTE_DATA data = new NativeMethodsShared.WIN32_FILE_ATTRIBUTE_DATA();
+            bool success = false;
+
+            success = NativeMethodsShared.GetFileAttributesEx(fullPath, 0, ref data);
+            return success && (data.fileAttributes & NativeMethodsShared.FILE_ATTRIBUTE_DIRECTORY) == 0;
+        }
+
+        internal static bool FileOrDirectoryExists(string path)
+        {
+            return IsWindows
+                ? FileOrDirectoryExistsWindows(path)
+                : File.Exists(path) || Directory.Exists(path);
+        }
+
+        internal static bool FileOrDirectoryExistsWindows(string path)
         {
             WIN32_FILE_ATTRIBUTE_DATA data = new WIN32_FILE_ATTRIBUTE_DATA();
             return GetFileAttributesEx(path, 0, ref data);

@@ -4,9 +4,8 @@
 using System;
 using System.Reflection;
 using System.Globalization;
-#if FEATURE_BINARY_SERIALIZATION
 using System.Runtime.Serialization;
-#endif
+
 #if FEATURE_SECURITY_PERMISSIONS
 using System.Security.Permissions;
 #endif
@@ -22,19 +21,9 @@ namespace Microsoft.Build.CommandLine
     /// <remarks>
     /// Unlike the CommandLineSwitchException, this exception is NOT thrown for syntax errors in switches.
     /// </remarks>
-#if FEATURE_BINARY_SERIALIZATION
     [Serializable]
-#endif
     internal sealed class InitializationException : Exception
     {
-        /// <summary>
-        /// Private default constructor prevents parameterless instantiation.
-        /// </summary>
-        private InitializationException()
-        {
-            // do nothing
-        }
-
         /// <summary>
         /// This constructor initializes the exception message.
         /// </summary>
@@ -63,7 +52,6 @@ namespace Microsoft.Build.CommandLine
             this.invalidSwitch = invalidSwitch;
         }
 
-#if FEATURE_BINARY_SERIALIZATION
         /// <summary>
         /// Serialization constructor
         /// </summary>
@@ -79,7 +67,6 @@ namespace Microsoft.Build.CommandLine
 
             invalidSwitch = info.GetString("invalidSwitch");
         }
-#endif
 
         /// <summary>
         /// Gets the error message and the invalid switch, or only the error message if no invalid switch is set.
@@ -94,7 +81,7 @@ namespace Microsoft.Build.CommandLine
                 }
                 else
                 {
-                    return base.Message + Environment.NewLine + ResourceUtilities.FormatResourceString("InvalidSwitchIndicator", invalidSwitch);
+                    return base.Message + Environment.NewLine + ResourceUtilities.FormatResourceStringStripCodeAndKeyword("InvalidSwitchIndicator", invalidSwitch);
                 }
             }
         }
@@ -102,7 +89,6 @@ namespace Microsoft.Build.CommandLine
         // the invalid switch causing this exception (can be null)
         private string invalidSwitch;
 
-#if FEATURE_BINARY_SERIALIZATION
         /// <summary>
         /// Serialize the contents of the class.
         /// </summary>
@@ -115,7 +101,6 @@ namespace Microsoft.Build.CommandLine
 
             info.AddValue("invalidSwitch", invalidSwitch, typeof(string));
         }
-#endif
 
         /// <summary>
         /// Throws the exception if the specified condition is not met.

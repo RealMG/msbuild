@@ -3,11 +3,10 @@
 
 using System;
 using System.IO;
-using System.Runtime.Serialization;
 using System.Runtime.Serialization.Formatters.Binary;
-using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
 using Microsoft.Build.Shared;
+using Microsoft.Build.Shared.FileSystem;
 
 namespace Microsoft.Build.Tasks
 {
@@ -20,7 +19,10 @@ namespace Microsoft.Build.Tasks
         // Current version for serialization. This should be changed when breaking changes
         // are made to this class.
         // Note: Consider that changes can break VS2015 RTM which did not have a version check.
-        private const byte CurrentSerializationVersion = 3;
+        // Version 4/5 - VS2017.7:
+        //   Unify .NET Core + Full Framework. Custom serialization on some types that are no
+        //   longer [Serializable].
+        private const byte CurrentSerializationVersion = 5;
 
         // Version this instance is serialized with.
         private byte _serializedVersion = CurrentSerializationVersion;
@@ -28,21 +30,20 @@ namespace Microsoft.Build.Tasks
         /// <summary>
         /// Writes the contents of this object out to the specified file.
         /// </summary>
-        /// <param name="stateFile"></param>
-        virtual internal void SerializeCache(string stateFile, TaskLoggingHelper log)
+        internal virtual void SerializeCache(string stateFile, TaskLoggingHelper log)
         {
             try
             {
                 if (!string.IsNullOrEmpty(stateFile))
                 {
-                    if (File.Exists(stateFile))
+                    if (FileSystems.Default.FileExists(stateFile))
                     {
                         File.Delete(stateFile);
                     }
 
-                    using (FileStream s = new FileStream(stateFile, FileMode.CreateNew))
+                    using (var s = new FileStream(stateFile, FileMode.CreateNew))
                     {
-                        BinaryFormatter formatter = new BinaryFormatter();
+                        var formatter = new BinaryFormatter();
                         formatter.Serialize(s, this);
                     }
                 }
@@ -63,9 +64,7 @@ namespace Microsoft.Build.Tasks
         /// <summary>
         /// Reads the specified file from disk into a StateFileBase derived object.
         /// </summary>
-        /// <param name="stateFile"></param>
-        /// <returns></returns>
-        static internal StateFileBase DeserializeCache(string stateFile, TaskLoggingHelper log, Type requiredReturnType)
+        internal static StateFileBase DeserializeCache(string stateFile, TaskLoggingHelper log, Type requiredReturnType)
         {
             StateFileBase retVal = null;
 
@@ -73,11 +72,11 @@ namespace Microsoft.Build.Tasks
             // then we create one.  
             try
             {
-                if (!string.IsNullOrEmpty(stateFile) && File.Exists(stateFile))
+                if (!string.IsNullOrEmpty(stateFile) && FileSystems.Default.FileExists(stateFile))
                 {
                     using (FileStream s = new FileStream(stateFile, FileMode.Open))
                     {
-                        BinaryFormatter formatter = new BinaryFormatter();
+                        var formatter = new BinaryFormatter();
                         object deserializedObject = formatter.Deserialize(s);
                         retVal = deserializedObject as StateFileBase;
 
@@ -129,13 +128,13 @@ namespace Microsoft.Build.Tasks
         /// </summary>
         /// <param name="stateFile"></param>
         /// <param name="log"></param>
-        static internal void DeleteFile(string stateFile, TaskLoggingHelper log)
+        internal static void DeleteFile(string stateFile, TaskLoggingHelper log)
         {
             try
             {
-                if (stateFile != null && stateFile.Length > 0)
+                if (!string.IsNullOrEmpty(stateFile))
                 {
-                    if (File.Exists(stateFile))
+                    if (FileSystems.Default.FileExists(stateFile))
                     {
                         File.Delete(stateFile);
                     }

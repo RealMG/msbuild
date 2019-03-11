@@ -1,9 +1,5 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Unit tests for the task builder object.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
@@ -11,7 +7,9 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Xml;
 using Microsoft.Build.BackEnd;
+using Microsoft.Build.BackEnd.SdkResolution;
 using Microsoft.Build.Collections;
+using Microsoft.Build.Engine.UnitTests.BackEnd;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
 using Microsoft.Build.Framework;
@@ -254,9 +252,9 @@ namespace ItemCreationTask
             project.Build("t", loggers);
 
             logger.AssertLogContains(new string[] { "final:[/assemblyresource:c.resx,barz]" });
-            logger.AssertLogContains(new string[] { ResourceUtilities.FormatResourceString("TaskStarted", "CreateProperty") });
-            logger.AssertLogContains(new string[] { ResourceUtilities.FormatResourceString("PropertyOutputOverridden", "LinkSwitches", "/assemblyresource:a.resx,foo", "/assemblyresource:b.resx,bar") });
-            logger.AssertLogContains(new string[] { ResourceUtilities.FormatResourceString("PropertyOutputOverridden", "LinkSwitches", "/assemblyresource:b.resx,bar", "/assemblyresource:c.resx,barz") });
+            logger.AssertLogContains(new string[] { ResourceUtilities.FormatResourceStringStripCodeAndKeyword("TaskStarted", "CreateProperty") });
+            logger.AssertLogContains(new string[] { ResourceUtilities.FormatResourceStringStripCodeAndKeyword("PropertyOutputOverridden", "LinkSwitches", "/assemblyresource:a.resx,foo", "/assemblyresource:b.resx,bar") });
+            logger.AssertLogContains(new string[] { ResourceUtilities.FormatResourceStringStripCodeAndKeyword("PropertyOutputOverridden", "LinkSwitches", "/assemblyresource:b.resx,bar", "/assemblyresource:c.resx,barz") });
         }
 
         /// <summary>
@@ -310,9 +308,9 @@ namespace ItemCreationTask
                 logger.AssertLogDoesntContain("end:");
 
                 logger.AssertLogContains(new string[] { "final:[/assemblyresource:c.resx,barz]" });
-                logger.AssertLogDoesntContain(ResourceUtilities.FormatResourceString("TaskStarted", "CreateProperty"));
-                logger.AssertLogContains(new string[] { ResourceUtilities.FormatResourceString("PropertyOutputOverridden", "LinkSwitches", "/assemblyresource:a.resx,foo", "/assemblyresource:b.resx,bar") });
-                logger.AssertLogContains(new string[] { ResourceUtilities.FormatResourceString("PropertyOutputOverridden", "LinkSwitches", "/assemblyresource:b.resx,bar", "/assemblyresource:c.resx,barz") });
+                logger.AssertLogDoesntContain(ResourceUtilities.FormatResourceStringStripCodeAndKeyword("TaskStarted", "CreateProperty"));
+                logger.AssertLogContains(new string[] { ResourceUtilities.FormatResourceStringStripCodeAndKeyword("PropertyOutputOverridden", "LinkSwitches", "/assemblyresource:a.resx,foo", "/assemblyresource:b.resx,bar") });
+                logger.AssertLogContains(new string[] { ResourceUtilities.FormatResourceStringStripCodeAndKeyword("PropertyOutputOverridden", "LinkSwitches", "/assemblyresource:b.resx,bar", "/assemblyresource:c.resx,barz") });
             }
             finally
             {
@@ -464,7 +462,7 @@ namespace ItemCreationTask
             loggers.Add(logger);
             bool result = project.Build("t", loggers);
 
-            Assert.Equal(true, result);
+            Assert.True(result);
             logger.AssertLogDoesntContain("[]");
             logger.AssertLogDoesntContain("MSB4118");
             logger.AssertLogDoesntContain("MSB3031");
@@ -491,7 +489,7 @@ namespace ItemCreationTask
             loggers.Add(logger);
             bool result = project.Build("t", loggers);
 
-            Assert.Equal(false, result);
+            Assert.False(result);
             logger.AssertLogContains("MSB3031");
         }
 
@@ -514,7 +512,7 @@ namespace ItemCreationTask
             loggers.Add(logger);
             bool result = project.Build("t", loggers);
 
-            Assert.Equal(false, result);
+            Assert.False(result);
             logger.AssertLogContains("MSB3031");
         }
 
@@ -544,7 +542,7 @@ namespace ItemCreationTask
             loggers.Add(logger);
             bool result = project.Build("t", loggers);
 
-            Assert.Equal(true, result);
+            Assert.True(result);
             logger.AssertLogContains("[.ext]");
         }
 
@@ -575,7 +573,7 @@ namespace ItemCreationTask
             loggers.Add(logger);
             bool result = project.Build("t", loggers);
 
-            Assert.Equal(true, result);
+            Assert.True(result);
             logger.AssertLogContains("[||illegal||]");
         }
 
@@ -729,6 +727,7 @@ namespace ItemCreationTask
         /// various task output-related operations, using a task built against the current 
         /// version of MSBuild.  
         /// </summary>
+        [Fact]
         public void ValidateDefiningProjectMetadataOnTaskOutputs()
         {
             string customTaskPath = CustomTaskHelper.GetAssemblyForTask(s_itemCreationTaskContents);
@@ -865,7 +864,7 @@ namespace ItemCreationTask
         /// <summary>
         /// Empty impl
         /// </summary>
-        Task<BuildResult[]> IRequestBuilderCallback.BuildProjects(string[] projectFiles, PropertyDictionary<ProjectPropertyInstance>[] properties, string[] toolsVersions, string[] targets, bool waitForResults)
+        Task<BuildResult[]> IRequestBuilderCallback.BuildProjects(string[] projectFiles, PropertyDictionary<ProjectPropertyInstance>[] properties, string[] toolsVersions, string[] targets, bool waitForResults, bool skipNonexistentTargets)
         {
             throw new NotImplementedException();
         }
@@ -873,19 +872,20 @@ namespace ItemCreationTask
         /// <summary>
         /// Not implemented.
         /// </summary>
-        Task IRequestBuilderCallback.BlockOnTargetInProgress(int blockingRequestId, string blockingTarget)
+        Task IRequestBuilderCallback.BlockOnTargetInProgress(int blockingRequestId, string blockingTarget, BuildResult partialBuildResult)
         {
             throw new NotImplementedException();
         }
 
         #endregion
 
-        /*********************************************************************************
-         * 
-         *                                     Helpers
-         * 
-         *********************************************************************************/
+/*********************************************************************************
+ * 
+ *                                     Helpers
+ * 
+ *********************************************************************************/
 
+#if FEATURE_CODEDOM
         /// <summary>
         /// Helper method for validating the setting of defining project metadata on items 
         /// coming from task outputs
@@ -949,6 +949,7 @@ namespace ItemCreationTask
                 }
             }
         }
+#endif // FEATURE_CODEDOM
 
 #if FEATURE_APARTMENT_STATE
         /// <summary>
@@ -1039,7 +1040,7 @@ namespace ClassLibrary2
 {" + (requireSTA ? "[RunInSTA]" : String.Empty) + @"
     public class ThreadTask : ITask
     {
-        #region ITask Members
+#region ITask Members
 
         public IBuildEngine BuildEngine
         {
@@ -1092,7 +1093,7 @@ namespace ClassLibrary2
             set;
         }
 
-        #endregion
+#endregion
     }
 }";
             return CustomTaskHelper.GetAssemblyForTask(taskContents);
@@ -1177,7 +1178,7 @@ namespace ClassLibrary2
         /// </summary>
         private class MockHost : MockLoggingService, IBuildComponentHost, IBuildComponent
         {
-            #region IBuildComponentHost Members
+#region IBuildComponentHost Members
 
             /// <summary>
             /// The config cache
@@ -1214,6 +1215,8 @@ namespace ClassLibrary2
             /// </summary>
             private LegacyThreadingData _legacyThreadingData;
 
+            private ISdkResolverService _sdkResolverService;
+
             /// <summary>
             /// Constructor
             /// 
@@ -1238,6 +1241,9 @@ namespace ClassLibrary2
 
                 _targetBuilder = new TargetBuilder();
                 ((IBuildComponent)_targetBuilder).InitializeComponent(this);
+
+                _sdkResolverService = new MockSdkResolverService();
+                ((IBuildComponent)_sdkResolverService).InitializeComponent(this);
             }
 
             /// <summary>
@@ -1308,6 +1314,9 @@ namespace ClassLibrary2
                     case BuildComponentType.TargetBuilder:
                         return (IBuildComponent)_targetBuilder;
 
+                    case BuildComponentType.SdkResolverService:
+                        return (IBuildComponent)_sdkResolverService;
+
                     default:
                         throw new ArgumentException("Unexpected type " + type);
                 }
@@ -1320,9 +1329,9 @@ namespace ClassLibrary2
             {
             }
 
-            #endregion
+#endregion
 
-            #region IBuildComponent Members
+#region IBuildComponent Members
 
             /// <summary>
             /// Sets the component host
@@ -1341,7 +1350,7 @@ namespace ClassLibrary2
                 throw new NotImplementedException();
             }
 
-            #endregion
+#endregion
         }
     }
 }

@@ -255,6 +255,8 @@ namespace System.Deployment.Internal.CodeSigning
 
         private const string Sha256SignatureMethodUri = @"http://www.w3.org/2000/09/xmldsig#rsa-sha256";
         private const string Sha256DigestMethod = @"http://www.w3.org/2000/09/xmldsig#sha256";
+        private const string Sha1SignatureMethodUri = @"http://www.w3.org/2000/09/xmldsig#rsa-sha1";
+        private const string Sha1DigestMethod = @"http://www.w3.org/2000/09/xmldsig#sha1";
 
         private const string wintrustPolicyFlagsRegPath = "Software\\Microsoft\\Windows\\CurrentVersion\\WinTrust\\Trust Providers\\Software Publishing";
         private const string wintrustPolicyFlagsRegName = "State";
@@ -449,12 +451,23 @@ namespace System.Deployment.Internal.CodeSigning
                 throw new CryptographicException(Win32.TRUST_E_SUBJECT_FORM_UNKNOWN);
             }
 
-            byte[] cspPublicKeyBlob = (GetFixedRSACryptoServiceProvider((RSACryptoServiceProvider)snKey, useSha256)).ExportCspBlob(false);
-            if (cspPublicKeyBlob == null || cspPublicKeyBlob.Length == 0)
-            {
-                throw new CryptographicException(Win32.NTE_BAD_KEY);
-            }
+            byte[] cspPublicKeyBlob;
 
+            if(snKey is RSACryptoServiceProvider){
+                cspPublicKeyBlob = (GetFixedRSACryptoServiceProvider((RSACryptoServiceProvider)snKey, useSha256)).ExportCspBlob(false);            
+                if (cspPublicKeyBlob == null || cspPublicKeyBlob.Length == 0)
+                {
+                    throw new CryptographicException(Win32.NTE_BAD_KEY);
+                }
+            }
+            else
+            {
+                using (RSACryptoServiceProvider rsaCsp = new RSACryptoServiceProvider())
+                {
+                    rsaCsp.ImportParameters(((RSA)snKey).ExportParameters(false));
+                    cspPublicKeyBlob = rsaCsp.ExportCspBlob(false);
+                }
+            }
             // Now compute the public key token.
             unsafe
             {
@@ -621,32 +634,43 @@ namespace System.Deployment.Internal.CodeSigning
         private static void AuthenticodeSignLicenseDom(XmlDocument licenseDom, CmiManifestSigner2 signer, string timeStampUrl, bool useSha256)
         {
             // Make sure it is RSA, as this is the only one Fusion will support.
-            if (signer.Certificate.PublicKey.Key.GetType() != typeof(RSACryptoServiceProvider))
-            {
-                throw new NotSupportedException();
-            }
-
-            if (signer.Certificate.PrivateKey.GetType() != typeof(RSACryptoServiceProvider))
+            RSA rsaPrivateKey = CngLightup.GetRSAPrivateKey(signer.Certificate);
+            if (rsaPrivateKey == null)
             {
                 throw new NotSupportedException();
             }
 
             // Setup up XMLDSIG engine.
             ManifestSignedXml2 signedXml = new ManifestSignedXml2(licenseDom);
-            signedXml.SigningKey = GetFixedRSACryptoServiceProvider(signer.Certificate.PrivateKey as RSACryptoServiceProvider, useSha256);
+            // only needs to change the provider type when RSACryptoServiceProvider is used
+            var rsaCsp = rsaPrivateKey is RSACryptoServiceProvider ?
+                            GetFixedRSACryptoServiceProvider(rsaPrivateKey as RSACryptoServiceProvider, useSha256) : rsaPrivateKey;
+            signedXml.SigningKey = rsaCsp;
             signedXml.SignedInfo.CanonicalizationMethod = SignedXml.XmlDsigExcC14NTransformUrl;
             if (signer.UseSha256)
+            {
                 signedXml.SignedInfo.SignatureMethod = Sha256SignatureMethodUri;
+            }
+            else
+            {
+                signedXml.SignedInfo.SignatureMethod = Sha1SignatureMethodUri;
+            }
 
             // Add the key information.
-            signedXml.KeyInfo.AddClause(new RSAKeyValue(GetFixedRSACryptoServiceProvider(signer.Certificate.PrivateKey as RSACryptoServiceProvider, useSha256) as RSA));
+            signedXml.KeyInfo.AddClause(new RSAKeyValue(rsaCsp));
             signedXml.KeyInfo.AddClause(new KeyInfoX509Data(signer.Certificate, signer.IncludeOption));
 
             // Add the enveloped reference.
             Reference reference = new Reference();
             reference.Uri = "";
             if (signer.UseSha256)
+            {
                 reference.DigestMethod = Sha256DigestMethod;
+            }
+            else
+            {
+                reference.DigestMethod = Sha1DigestMethod;
+            }
 
             // Add an enveloped and an Exc-C14N transform.
             reference.AddTransform(new XmlDsigEnvelopedSignatureTransform());
@@ -746,17 +770,30 @@ namespace System.Deployment.Internal.CodeSigning
                 throw new CryptographicException(Win32.TRUST_E_SUBJECT_FORM_UNKNOWN);
             }
 
-            if (signer.StrongNameKey.GetType() != typeof(RSACryptoServiceProvider))
+            if (!(signer.StrongNameKey is RSA))
             {
                 throw new NotSupportedException();
             }
 
             // Setup up XMLDSIG engine.
             ManifestSignedXml2 signedXml = new ManifestSignedXml2(signatureParent);
-            signedXml.SigningKey = GetFixedRSACryptoServiceProvider(signer.StrongNameKey as RSACryptoServiceProvider, useSha256);
+            if (signer.StrongNameKey is RSACryptoServiceProvider)
+            {
+                signedXml.SigningKey = GetFixedRSACryptoServiceProvider(signer.StrongNameKey as RSACryptoServiceProvider, useSha256);
+            }
+            else
+            {
+                signedXml.SigningKey = signer.StrongNameKey;
+            }
             signedXml.SignedInfo.CanonicalizationMethod = SignedXml.XmlDsigExcC14NTransformUrl;
             if (signer.UseSha256)
+            {
                 signedXml.SignedInfo.SignatureMethod = Sha256SignatureMethodUri;
+            }
+            else
+            {
+                signedXml.SignedInfo.SignatureMethod = Sha1SignatureMethodUri;
+            }
 
             // Add the key information.
             signedXml.KeyInfo.AddClause(new RSAKeyValue(snKey));
@@ -770,7 +807,13 @@ namespace System.Deployment.Internal.CodeSigning
             Reference enveloped = new Reference();
             enveloped.Uri = "";
             if (signer.UseSha256)
+            {
                 enveloped.DigestMethod = Sha256DigestMethod;
+            }
+            else
+            {
+                enveloped.DigestMethod = Sha1DigestMethod;
+            }
 
             // Add an enveloped then Exc-C14N transform.
             enveloped.AddTransform(new XmlDsigEnvelopedSignatureTransform());

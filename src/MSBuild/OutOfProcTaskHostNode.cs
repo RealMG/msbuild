@@ -1,9 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Class implementing an out-of-proc node for hosting tasks.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections;
@@ -171,20 +167,10 @@ namespace Microsoft.Build.CommandLine
         private RegisteredTaskObjectCacheBase _registeredTaskObjectCache;
 #endif
 
-#if !FEATURE_NAMED_PIPES_FULL_DUPLEX
-        private string _clientToServerPipeHandle;
-        private string _serverToClientPipeHandle;
-#endif
-
         /// <summary>
         /// Constructor.
         /// </summary>
-        public OutOfProcTaskHostNode(
-#if !FEATURE_NAMED_PIPES_FULL_DUPLEX
-            string clientToServerPipeHandle,
-            string serverToClientPipeHandle
-#endif       
-            )
+        public OutOfProcTaskHostNode()
         {
             // We don't know what the current build thinks this variable should be until RunTask(), but as a fallback in case there are 
             // communications before we get the configuration set up, just go with what was already in the environment from when this node
@@ -193,11 +179,6 @@ namespace Microsoft.Build.CommandLine
 
 #if FEATURE_APPDOMAIN
             AppDomain.CurrentDomain.UnhandledException += new UnhandledExceptionEventHandler(ExceptionHandling.UnhandledExceptionHandler);
-#endif
-
-#if !FEATURE_NAMED_PIPES_FULL_DUPLEX
-            _clientToServerPipeHandle = clientToServerPipeHandle;
-            _serverToClientPipeHandle = serverToClientPipeHandle;
 #endif
 
             _receivedPackets = new Queue<INodePacket>();
@@ -491,7 +472,7 @@ namespace Microsoft.Build.CommandLine
         /// <param name="nodeId">The node from which the packet was received.</param>
         /// <param name="packetType">The packet type.</param>
         /// <param name="translator">The translator containing the data from which the packet should be reconstructed.</param>
-        public void DeserializeAndRoutePacket(int nodeId, NodePacketType packetType, INodePacketTranslator translator)
+        public void DeserializeAndRoutePacket(int nodeId, NodePacketType packetType, ITranslator translator)
         {
             _packetFactory.DeserializeAndRoutePacket(nodeId, packetType, translator);
         }
@@ -544,13 +525,9 @@ namespace Microsoft.Build.CommandLine
             // Snapshot the current environment
             _savedEnvironment = CommunicationsUtilities.GetEnvironmentVariables();
 
-#if FEATURE_NAMED_PIPES_FULL_DUPLEX
             string pipeName = "MSBuild" + Process.GetCurrentProcess().Id;
 
             _nodeEndpoint = new NodeEndpointOutOfProcTaskHost(pipeName);
-#else
-            _nodeEndpoint = new NodeEndpointOutOfProcTaskHost(_clientToServerPipeHandle, _serverToClientPipeHandle);
-#endif
             _nodeEndpoint.OnLinkStatusChanged += new LinkStatusChangedDelegate(OnLinkStatusChanged);
             _nodeEndpoint.Listen(this);
 
@@ -735,10 +712,9 @@ namespace Microsoft.Build.CommandLine
             _registeredTaskObjectCache = null;
 #endif
 
-#if FEATURE_ENVIRONMENT_SYSTEMDIRECTORY
-            // Restore the original current directory.
-            NativeMethodsShared.SetCurrentDirectory(Environment.SystemDirectory);
-#endif
+            // On Windows, a process holds a handle to the current directory,
+            // so reset it away from a user-requested folder that may get deleted.
+            NativeMethodsShared.SetCurrentDirectory(BuildEnvironmentHelper.Instance.CurrentMSBuildToolsDirectory);
 
             // Restore the original environment.
             CommunicationsUtilities.SetEnvironment(_savedEnvironment);
@@ -822,14 +798,8 @@ namespace Microsoft.Build.CommandLine
                 SetTaskHostEnvironment(taskConfiguration.BuildProcessEnvironment);
 
                 // Set culture
-#if FEATURE_CULTUREINFO_SETTERS
-                CultureInfo.CurrentCulture = taskConfiguration.Culture;
-                CultureInfo.CurrentUICulture = taskConfiguration.UICulture;
-
-#else
                 Thread.CurrentThread.CurrentCulture = taskConfiguration.Culture;
                 Thread.CurrentThread.CurrentUICulture = taskConfiguration.UICulture;
-#endif
 
                 string taskName = taskConfiguration.TaskName;
                 string taskLocation = taskConfiguration.TaskLocation;
@@ -1103,11 +1073,7 @@ namespace Microsoft.Build.CommandLine
         {
             if (_nodeEndpoint != null && _nodeEndpoint.LinkStatus == LinkStatus.Active)
             {
-#if FEATURE_BINARY_SERIALIZATION
                 if (!e.GetType().GetTypeInfo().IsSerializable)
-#else
-                if (!NodePacketTranslator.IsSerializable(e))
-#endif
                 {
                     // log a warning and bail.  This will end up re-calling SendBuildEvent, but we know for a fact
                     // that the warning that we constructed is serializable, so everything should be good.  

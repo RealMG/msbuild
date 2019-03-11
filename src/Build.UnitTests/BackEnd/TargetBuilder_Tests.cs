@@ -1,9 +1,5 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Unit tests for the TargetBuilder with a mock task builder.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Xml;
@@ -26,6 +22,8 @@ using ProjectLoggingContext = Microsoft.Build.BackEnd.Logging.ProjectLoggingCont
 using NodeLoggingContext = Microsoft.Build.BackEnd.Logging.NodeLoggingContext;
 using LegacyThreadingData = Microsoft.Build.Execution.LegacyThreadingData;
 using System.Threading.Tasks;
+using Microsoft.Build.BackEnd.SdkResolution;
+using Microsoft.Build.Engine.UnitTests.BackEnd;
 using Xunit;
 
 namespace Microsoft.Build.UnitTests.BackEnd
@@ -51,6 +49,8 @@ namespace Microsoft.Build.UnitTests.BackEnd
         /// </summary>
         private int _nodeRequestId;
 
+        #pragma warning disable xUnit1013
+
         /// <summary>
         /// Callback used to receive exceptions from loggers.  Unused here.
         /// </summary>
@@ -58,6 +58,8 @@ namespace Microsoft.Build.UnitTests.BackEnd
         public void LoggingException(Exception e)
         {
         }
+
+        #pragma warning restore xUnit1013
 
         /// <summary>
         /// Sets up to run tests.  Creates the host object.
@@ -105,7 +107,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             BuildResult result = builder.BuildTargets(GetProjectLoggingContext(entry), entry, this, entry.Request.Targets.ToArray(), CreateStandardLookup(project), CancellationToken.None).Result;
             Assert.True(result.HasResultsForTarget("Empty"));
             Assert.Equal(TargetResultCode.Success, result["Empty"].ResultCode);
-            Assert.Equal(0, result["Empty"].Items.Length);
+            Assert.Empty(result["Empty"].Items);
         }
 
         /// <summary>
@@ -1172,11 +1174,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
 </Project>
       ";
             StringReader reader = new StringReader(projectContents);
-#if FEATURE_XMLTEXTREADER
             Project project = new Project(new XmlTextReader(reader), null, null);
-#else
-            Project project = new Project(XmlReader.Create(reader), null, null);
-#endif
             bool success = project.Build(_mockLogger);
             Assert.False(success);
         }
@@ -1244,6 +1242,29 @@ namespace Microsoft.Build.UnitTests.BackEnd
             Assert.Equal(TargetResultCode.Failure, resultsCache.GetResultForRequest(entry.Request)["_Error1"].ResultCode);
         }
 
+        [Fact]
+        public void SkipNonexistentTargetsDoesNotExecuteOrCacheTargetResult()
+        {
+            string projectContents = @"<Target Name=""Build"" />";
+
+            var project = CreateTestProject(projectContents, string.Empty, "Build");
+            TargetBuilder builder = (TargetBuilder)_host.GetComponent(BuildComponentType.TargetBuilder);
+            MockTaskBuilder taskBuilder = (MockTaskBuilder)_host.GetComponent(BuildComponentType.TaskBuilder);
+            taskBuilder.FailTaskNumber = 1;
+
+            IConfigCache cache = (IConfigCache)_host.GetComponent(BuildComponentType.ConfigCache);
+            BuildRequestEntry entry = new BuildRequestEntry(CreateNewBuildRequest(1, new[] { "NotFound" }, BuildRequestDataFlags.SkipNonexistentTargets), cache[1]);
+            var buildResult = builder.BuildTargets(GetProjectLoggingContext(entry), entry, this, entry.Request.Targets.ToArray(), CreateStandardLookup(project), CancellationToken.None).Result;
+
+            IResultsCache resultsCache = (IResultsCache)_host.GetComponent(BuildComponentType.ResultsCache);
+
+            // This should throw because the results cache should not contain the results for the target that was not
+            // executed. This is different than when a target is skipped due to condition not met where the result
+            // would be in the cache. In this case we can't cache the result because it is only valid for the single
+            // request.
+            Assert.Throws<InternalErrorException>(() => resultsCache.GetResultForRequest(entry.Request));
+        }
+
         #region IRequestBuilderCallback Members
 
         /// <summary>
@@ -1254,8 +1275,9 @@ namespace Microsoft.Build.UnitTests.BackEnd
         /// <param name="toolsVersions">N/A</param>
         /// <param name="targets">N/A</param>
         /// <param name="waitForResults">N/A</param>
+        /// <param name="skipNonexistentTargets">N/A</param>
         /// <returns>N/A</returns>
-        Task<BuildResult[]> IRequestBuilderCallback.BuildProjects(string[] projectFiles, PropertyDictionary<ProjectPropertyInstance>[] properties, string[] toolsVersions, string[] targets, bool waitForResults)
+        Task<BuildResult[]> IRequestBuilderCallback.BuildProjects(string[] projectFiles, PropertyDictionary<ProjectPropertyInstance>[] properties, string[] toolsVersions, string[] targets, bool waitForResults, bool skipNonexistentTargets)
         {
             throw new NotImplementedException();
         }
@@ -1263,7 +1285,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
         /// <summary>
         /// Not implemented
         /// </summary>
-        Task IRequestBuilderCallback.BlockOnTargetInProgress(int blockingRequestId, string blockingTarget)
+        Task IRequestBuilderCallback.BlockOnTargetInProgress(int blockingRequestId, string blockingTarget, BuildResult partialBuildResult)
         {
             throw new NotImplementedException();
         }
@@ -1310,7 +1332,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             int currentTask = 0;
             foreach (ProjectTaskInstance task in mockBuilder.ExecutedTasks)
             {
-                Assert.True(String.Equals(task.Name, tasks[currentTask]));
+                Assert.Equal(task.Name, tasks[currentTask]);
                 currentTask++;
             }
         }
@@ -1318,9 +1340,9 @@ namespace Microsoft.Build.UnitTests.BackEnd
         /// <summary>
         /// Creates a new build request
         /// </summary>
-        private BuildRequest CreateNewBuildRequest(int configurationId, string[] targets)
+        private BuildRequest CreateNewBuildRequest(int configurationId, string[] targets, BuildRequestDataFlags flags = BuildRequestDataFlags.None)
         {
-            return new BuildRequest(1 /* submissionId */, _nodeRequestId++, configurationId, targets, null, BuildEventContext.Invalid, null);
+            return new BuildRequest(1 /* submissionId */, _nodeRequestId++, configurationId, targets, null, BuildEventContext.Invalid, null, flags);
         }
 
         /// <summary>
@@ -1330,7 +1352,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
         /// <returns>The lookup</returns>
         private Lookup CreateStandardLookup(ProjectInstance project)
         {
-            Lookup lookup = new Lookup(new ItemDictionary<ProjectItemInstance>(project.Items), new PropertyDictionary<ProjectPropertyInstance>(project.Properties), null);
+            Lookup lookup = new Lookup(new ItemDictionary<ProjectItemInstance>(project.Items), new PropertyDictionary<ProjectPropertyInstance>(project.Properties));
             return lookup;
         }
 
@@ -1509,6 +1531,8 @@ namespace Microsoft.Build.UnitTests.BackEnd
             /// </summary>
             private LegacyThreadingData _legacyThreadingData;
 
+            private ISdkResolverService _sdkResolverService;
+
             /// <summary>
             /// Constructor
             /// </summary>
@@ -1533,6 +1557,9 @@ namespace Microsoft.Build.UnitTests.BackEnd
 
                 _targetBuilder = new TargetBuilder();
                 ((IBuildComponent)_targetBuilder).InitializeComponent(this);
+
+                _sdkResolverService = new MockSdkResolverService();
+                ((IBuildComponent)_sdkResolverService).InitializeComponent(this);
             }
 
             /// <summary>
@@ -1606,6 +1633,9 @@ namespace Microsoft.Build.UnitTests.BackEnd
 
                     case BuildComponentType.TargetBuilder:
                         return (IBuildComponent)_targetBuilder;
+
+                    case BuildComponentType.SdkResolverService:
+                        return (IBuildComponent)_sdkResolverService;
 
                     default:
                         throw new ArgumentException("Unexpected type " + type);

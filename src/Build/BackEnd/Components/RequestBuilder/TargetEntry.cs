@@ -1,10 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>An entry on the TargetBuilder's target stack.  This class 
-//          does most of the work of building an individual target.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections;
@@ -13,12 +8,11 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Build.Collections;
-#if FEATURE_MSBUILD_DEBUGGER
-using Microsoft.Build.Debugging;
-#endif
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
+using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
+using Microsoft.Build.Shared.FileSystem;
 using ElementLocation = Microsoft.Build.Construction.ElementLocation;
 using InvalidProjectFileException = Microsoft.Build.Exceptions.InvalidProjectFileException;
 using MessageImportance = Microsoft.Build.Framework.MessageImportance;
@@ -112,6 +106,11 @@ namespace Microsoft.Build.BackEnd
         private TargetEntry _parentTarget;
 
         /// <summary>
+        /// Why the parent target built this target.
+        /// </summary>
+        private TargetBuiltReason _buildReason;
+
+        /// <summary>
         /// The expander used to expand item and property markup to evaluated values.
         /// </summary>
         private Expander<ProjectPropertyInstance, ProjectItemInstance> _expander;
@@ -137,11 +136,6 @@ namespace Microsoft.Build.BackEnd
         private Stack<Lookup.Scope> _legacyCallTargetScopes;
 
         /// <summary>
-        /// The lock taken when dealing with cancel-synchronized objects
-        /// </summary>
-        private Object _cancelLock = new Object();
-
-        /// <summary>
         /// The cancellation token.
         /// </summary>
         private CancellationToken _cancellationToken;
@@ -164,9 +158,10 @@ namespace Microsoft.Build.BackEnd
         /// <param name="targetSpecification">The specification for the target to build.</param>
         /// <param name="baseLookup">The lookup to use.</param>
         /// <param name="parentTarget">The parent of this entry, if any.</param>
+        /// <param name="buildReason">The reason the parent built this target.</param>
         /// <param name="host">The Build Component Host to use.</param>
         /// <param name="stopProcessingOnCompletion">True if the target builder should stop processing the current target stack when this target is complete.</param>
-        internal TargetEntry(BuildRequestEntry requestEntry, ITargetBuilderCallback targetBuilderCallback, TargetSpecification targetSpecification, Lookup baseLookup, TargetEntry parentTarget, IBuildComponentHost host, bool stopProcessingOnCompletion)
+        internal TargetEntry(BuildRequestEntry requestEntry, ITargetBuilderCallback targetBuilderCallback, TargetSpecification targetSpecification, Lookup baseLookup, TargetEntry parentTarget, TargetBuiltReason buildReason, IBuildComponentHost host, bool stopProcessingOnCompletion)
         {
             ErrorUtilities.VerifyThrowArgumentNull(requestEntry, "requestEntry");
             ErrorUtilities.VerifyThrowArgumentNull(targetBuilderCallback, "targetBuilderCallback");
@@ -178,7 +173,8 @@ namespace Microsoft.Build.BackEnd
             _targetBuilderCallback = targetBuilderCallback;
             _targetSpecification = targetSpecification;
             _parentTarget = parentTarget;
-            _expander = new Expander<ProjectPropertyInstance, ProjectItemInstance>(baseLookup.ReadOnlyLookup, baseLookup.ReadOnlyLookup);
+            _buildReason = buildReason;
+            _expander = new Expander<ProjectPropertyInstance, ProjectItemInstance>(baseLookup, baseLookup, FileSystems.Default);
             _state = TargetEntryState.Dependencies;
             _baseLookup = baseLookup;
             _host = host;
@@ -296,6 +292,17 @@ namespace Microsoft.Build.BackEnd
             }
         }
 
+        /// <summary>
+        /// Why the parent target built this target.
+        /// </summary>
+        internal TargetBuiltReason BuildReason
+        {
+            get
+            {
+                return _buildReason;
+            }
+        }
+
         #region IEquatable<TargetEntry> Members
 
         /// <summary>
@@ -344,8 +351,8 @@ namespace Microsoft.Build.BackEnd
                 _requestEntry.ProjectRootDirectory,
                 _target.ConditionLocation,
                 projectLoggingContext.LoggingService,
-                projectLoggingContext.BuildEventContext
-                );
+                projectLoggingContext.BuildEventContext,
+                FileSystems.Default);
 
             if (!condition)
             {
@@ -363,14 +370,27 @@ namespace Microsoft.Build.BackEnd
                     // target.  In the Task builder (and original Task Engine), a Task Skipped message would be logged in
                     // the context of the target, not the task.  This should be the same, especially given that we
                     // wish to allow batching on the condition of a target.
-                    projectLoggingContext.LogComment(MessageImportance.Low, "TargetSkippedFalseCondition", _target.Name, _target.Condition, expanded);
+                    var skippedTargetEventArgs = new TargetSkippedEventArgs(
+                        ResourceUtilities.GetResourceString("TargetSkippedFalseCondition"),
+                        _target.Name,
+                        _target.Condition,
+                        expanded)
+                    {
+                        BuildEventContext = projectLoggingContext.BuildEventContext,
+                        TargetName = _target.Name,
+                        TargetFile = _target.Location.File,
+                        ParentTarget = ParentEntry?.Target?.Name,
+                        BuildReason = BuildReason
+                    };
+
+                    projectLoggingContext.LogBuildEvent(skippedTargetEventArgs);
                 }
 
                 return new List<TargetSpecification>();
             }
 
-            IList<string> dependencies = _expander.ExpandIntoStringListLeaveEscaped(_target.DependsOnTargets, ExpanderOptions.ExpandPropertiesAndItems, _target.DependsOnTargetsLocation);
-            List<TargetSpecification> dependencyTargets = new List<TargetSpecification>(dependencies.Count);
+            var dependencies = _expander.ExpandIntoStringListLeaveEscaped(_target.DependsOnTargets, ExpanderOptions.ExpandPropertiesAndItems, _target.DependsOnTargetsLocation);
+            List<TargetSpecification> dependencyTargets = new List<TargetSpecification>();
             foreach (string escapedDependency in dependencies)
             {
                 string dependencyTargetName = EscapingUtilities.UnescapeAll(escapedDependency);
@@ -427,7 +447,7 @@ namespace Microsoft.Build.BackEnd
                         break;
                     }
 
-                    targetLoggingContext = projectLoggingContext.LogTargetBatchStarted(projectFullPath, _target, parentTargetName);
+                    targetLoggingContext = projectLoggingContext.LogTargetBatchStarted(projectFullPath, _target, parentTargetName, _buildReason);
                     WorkUnitResult bucketResult = null;
                     targetSuccess = false;
 
@@ -597,8 +617,7 @@ namespace Microsoft.Build.BackEnd
                                  requestEntry.ProjectRootDirectory,
                                  _target.KeepDuplicateOutputsLocation,
                                  projectLoggingContext.LoggingService,
-                                 projectLoggingContext.BuildEventContext
-                                 );
+                                 projectLoggingContext.BuildEventContext, FileSystems.Default);
 
                         // NOTE: we need to gather the outputs in batches, because the output specification may reference item metadata
                         // Also, we are using the baseLookup, which has possibly had changes made to it since the project started.  Because of this, the
@@ -689,12 +708,11 @@ namespace Microsoft.Build.BackEnd
                     _requestEntry.ProjectRootDirectory,
                     errorTargetInstance.ConditionLocation,
                     projectLoggingContext.LoggingService,
-                    projectLoggingContext.BuildEventContext
-                );
+                    projectLoggingContext.BuildEventContext, FileSystems.Default);
 
                 if (condition)
                 {
-                    IList<string> errorTargets = _expander.ExpandIntoStringListLeaveEscaped(errorTargetInstance.ExecuteTargets, ExpanderOptions.ExpandPropertiesAndItems, errorTargetInstance.ExecuteTargetsLocation);
+                    var errorTargets = _expander.ExpandIntoStringListLeaveEscaped(errorTargetInstance.ExecuteTargets, ExpanderOptions.ExpandPropertiesAndItems, errorTargetInstance.ExecuteTargetsLocation);
 
                     foreach (string escapedErrorTarget in errorTargets)
                     {
@@ -807,22 +825,9 @@ namespace Microsoft.Build.BackEnd
                 {
                     ProjectTargetInstanceChild targetChildInstance = _target.Children[currentTask];
 
-#if FEATURE_MSBUILD_DEBUGGER
-                    if (DebuggerManager.DebuggingEnabled)
-                    {
-                        DebuggerManager.EnterState(targetChildInstance.Location, lookupForExecution.GlobalsForDebugging /* does not matter which lookup we get this from */);
-                    }
-#endif
-
                     // Execute the task.
                     lastResult = await taskBuilder.ExecuteTask(targetLoggingContext, _requestEntry, _targetBuilderCallback, targetChildInstance, mode, lookupForInference, lookupForExecution, _cancellationToken);
 
-#if FEATURE_MSBUILD_DEBUGGER
-                    if (DebuggerManager.DebuggingEnabled)
-                    {
-                        DebuggerManager.LeaveState(targetChildInstance.Location);
-                    }
-#endif
                     if (lastResult.ResultCode == WorkUnitResultCode.Failed)
                     {
                         aggregatedTaskResult = WorkUnitResultCode.Failed;

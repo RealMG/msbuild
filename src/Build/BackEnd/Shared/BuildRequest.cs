@@ -1,19 +1,11 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Class containing data for a build request.</summary>
-//-----------------------------------------------------------------------
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text;
 using Microsoft.Build.Shared;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Execution;
-
-using Constants = Microsoft.Build.Internal.Constants;
 
 namespace Microsoft.Build.BackEnd
 {
@@ -69,11 +61,6 @@ namespace Microsoft.Build.BackEnd
         private List<string> _targets;
 
         /// <summary>
-        /// The route for host-aware tasks back to the host
-        /// </summary>
-        private HostServices _hostServices;
-
-        /// <summary>
         /// The build event context of the parent
         /// </summary>
         private BuildEventContext _parentBuildEventContext;
@@ -87,6 +74,16 @@ namespace Microsoft.Build.BackEnd
         /// Whether or not the <see cref="BuildResult"/> issued in response to this request should include <see cref="BuildResult.ProjectStateAfterBuild"/>.
         /// </summary>
         private BuildRequestDataFlags _buildRequestDataFlags;
+
+        /// <summary>
+        /// Filter describing properties, items, and metadata of interest for this request.
+        /// </summary>
+        private RequestedProjectState _requestedProjectState;
+
+        /// <summary>
+        /// If set, skip targets that are not defined in the projects to be built.
+        /// </summary>
+        private bool _skipNonexistentTargets;
 
         /// <summary>
         /// Constructor for serialization.
@@ -106,6 +103,7 @@ namespace Microsoft.Build.BackEnd
         /// <param name="parentBuildEventContext">The build event context of the parent project.</param>
         /// <param name="parentRequest">The parent build request, if any.</param>
         /// <param name="buildRequestDataFlags">Additional flags for the request.</param>
+        /// <param name="requestedProjectState">Filter for desired build results.</param>
         public BuildRequest(
             int submissionId,
             int nodeRequestId,
@@ -114,7 +112,8 @@ namespace Microsoft.Build.BackEnd
             HostServices hostServices,
             BuildEventContext parentBuildEventContext,
             BuildRequest parentRequest,
-            BuildRequestDataFlags buildRequestDataFlags = BuildRequestDataFlags.None)
+            BuildRequestDataFlags buildRequestDataFlags = BuildRequestDataFlags.None,
+            RequestedProjectState requestedProjectState = null)
         {
             ErrorUtilities.VerifyThrowArgumentNull(escapedTargets, "targets");
             ErrorUtilities.VerifyThrowArgumentNull(parentBuildEventContext, "parentBuildEventContext");
@@ -129,27 +128,21 @@ namespace Microsoft.Build.BackEnd
                 _targets.Add(EscapingUtilities.UnescapeAll(target));
             }
 
-            _hostServices = hostServices;
+            HostServices = hostServices;
             _buildEventContext = BuildEventContext.Invalid;
             _parentBuildEventContext = parentBuildEventContext;
             _globalRequestId = InvalidGlobalRequestId;
-            if (null != parentRequest)
-            {
-                _parentGlobalRequestId = parentRequest.GlobalRequestId;
-            }
-            else
-            {
-                _parentGlobalRequestId = InvalidGlobalRequestId;
-            }
+            _parentGlobalRequestId = parentRequest?.GlobalRequestId ?? InvalidGlobalRequestId;
 
             _nodeRequestId = nodeRequestId;
             _buildRequestDataFlags = buildRequestDataFlags;
+            _requestedProjectState = requestedProjectState;
         }
 
         /// <summary>
         /// Private constructor for deserialization
         /// </summary>
-        private BuildRequest(INodePacketTranslator translator)
+        private BuildRequest(ITranslator translator)
         {
             Translate(translator);
         }
@@ -279,9 +272,19 @@ namespace Microsoft.Build.BackEnd
         /// </summary>
         public BuildRequestDataFlags BuildRequestDataFlags
         {
-            get { return _buildRequestDataFlags; }
-            set { _buildRequestDataFlags = value; }
+            get => _buildRequestDataFlags;
+            set => _buildRequestDataFlags = value;
         }
+
+        /// <summary>
+        /// Filter describing properties, items, and metadata of interest for this request.
+        /// </summary>
+        public RequestedProjectState RequestedProjectState
+        {
+            get => _requestedProjectState;
+            set => _requestedProjectState = value;
+        }
+
 
         /// <summary>
         /// The route for host-aware tasks back to the host
@@ -289,8 +292,7 @@ namespace Microsoft.Build.BackEnd
         internal HostServices HostServices
         {
             [DebuggerStepThrough]
-            get
-            { return _hostServices; }
+            get;
         }
 
         /// <summary>
@@ -301,6 +303,15 @@ namespace Microsoft.Build.BackEnd
             [DebuggerStepThrough]
             get
             { return _parentGlobalRequestId == InvalidGlobalRequestId; }
+        }
+
+        /// <summary>
+        /// If set, skip targets that are not defined in the projects to be built.
+        /// </summary>
+        internal bool SkipNonexistentTargets
+        {
+            get => _skipNonexistentTargets;
+            set => _skipNonexistentTargets = value;
         }
 
         /// <summary>
@@ -319,7 +330,7 @@ namespace Microsoft.Build.BackEnd
         /// <summary>
         /// Reads/writes this packet
         /// </summary>
-        public void Translate(INodePacketTranslator translator)
+        public void Translate(ITranslator translator)
         {
             translator.Translate(ref _submissionId);
             translator.Translate(ref _configurationId);
@@ -330,6 +341,8 @@ namespace Microsoft.Build.BackEnd
             translator.Translate(ref _parentBuildEventContext);
             translator.Translate(ref _buildEventContext);
             translator.TranslateEnum(ref _buildRequestDataFlags, (int)_buildRequestDataFlags);
+            translator.Translate(ref _skipNonexistentTargets);
+            translator.Translate(ref _requestedProjectState);
 
             // UNDONE: (Compat) Serialize the host object.
         }
@@ -337,18 +350,11 @@ namespace Microsoft.Build.BackEnd
         /// <summary>
         /// Factory for serialization.
         /// </summary>
-        static internal INodePacket FactoryForDeserialization(INodePacketTranslator translator)
+        internal static INodePacket FactoryForDeserialization(ITranslator translator)
         {
             return new BuildRequest(translator);
         }
 
         #endregion
-        /// <summary>
-        /// Returns true if the result applies to this request.
-        /// </summary>
-        internal bool DoesResultApplyToRequest(BuildResult result)
-        {
-            return _globalRequestId == result.GlobalRequestId && _nodeRequestId == result.NodeRequestId;
-        }
     }
 }

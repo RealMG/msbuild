@@ -1,19 +1,11 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>A dictionary over properties or metadata with copy-on-write semantics.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Threading;
 using System.Diagnostics;
 using Microsoft.Build.Shared;
-using Microsoft.Build.Evaluation;
-using Microsoft.Build.Framework;
-using Microsoft.Build.Internal;
 
 namespace Microsoft.Build.Collections
 {
@@ -49,7 +41,7 @@ namespace Microsoft.Build.Collections
     /// </remarks>
     /// <typeparam name="T">Property or Metadata class type to store</typeparam>
     [DebuggerDisplay("#Entries={Count}")]
-    internal sealed class CopyOnWritePropertyDictionary<T> : IEnumerable<T>, IEquatable<CopyOnWritePropertyDictionary<T>>, IPropertyProvider<T>, IDictionary<string, T>
+    internal sealed class CopyOnWritePropertyDictionary<T> : IEnumerable<T>, IEquatable<CopyOnWritePropertyDictionary<T>>, IDictionary<string, T>
         where T : class, IKeyed, IValued, IEquatable<T>, IImmutable
     {
         /// <summary>
@@ -58,17 +50,12 @@ namespace Microsoft.Build.Collections
         private readonly CopyOnWriteDictionary<string, T> _properties;
 
         /// <summary>
-        /// Comparer whose start and end indexes we can manipulate as necessary.
-        /// </summary>
-        private readonly MSBuildNameIgnoreCaseComparer _comparer = MSBuildNameIgnoreCaseComparer.Mutable;
-
-        /// <summary>
         /// Creates empty dictionary
         /// </summary>
         public CopyOnWritePropertyDictionary()
         {
             // Tracing.Record("New COWD1");
-            _properties = new CopyOnWriteDictionary<string, T>(_comparer);
+            _properties = new CopyOnWriteDictionary<string, T>(MSBuildNameIgnoreCaseComparer.Default);
         }
 
         /// <summary>
@@ -77,7 +64,7 @@ namespace Microsoft.Build.Collections
         public CopyOnWritePropertyDictionary(int capacity)
         {
             // Tracing.Record("New COWD2");
-            _properties = new CopyOnWriteDictionary<string, T>(capacity, _comparer);
+            _properties = new CopyOnWriteDictionary<string, T>(capacity, MSBuildNameIgnoreCaseComparer.Default);
         }
 
         /// <summary>
@@ -91,13 +78,7 @@ namespace Microsoft.Build.Collections
         /// <summary>
         /// Accessor for the list of property names
         /// </summary>
-        ICollection<string> IDictionary<string, T>.Keys
-        {
-            get
-            {
-                return PropertyNames;
-            }
-        }
+        ICollection<string> IDictionary<string, T>.Keys => PropertyNames;
 
         /// <summary>
         /// Accessor for the list of properties
@@ -130,13 +111,7 @@ namespace Microsoft.Build.Collections
         /// <summary>
         /// Whether the collection is read-only.
         /// </summary>
-        bool ICollection<KeyValuePair<string, T>>.IsReadOnly
-        {
-            get
-            {
-                return false;
-            }
-        }
+        bool ICollection<KeyValuePair<string, T>>.IsReadOnly => false;
 
         /// <summary>
         /// Returns the number of property in the collection.
@@ -178,15 +153,8 @@ namespace Microsoft.Build.Collections
         T IDictionary<string, T>.this[string name]
         {
             // The backing properties dictionary is locked in the indexor
-            get
-            {
-                return this[name];
-            }
-
-            set
-            {
-                this[name] = value;
-            }
+            get => this[name];
+            set => this[name] = value;
         }
 
         /// <summary>
@@ -288,7 +256,7 @@ namespace Microsoft.Build.Collections
                 return false;
             }
 
-            if (Object.ReferenceEquals(this, other))
+            if (ReferenceEquals(this, other))
             {
                 return true;
             }
@@ -315,32 +283,6 @@ namespace Microsoft.Build.Collections
 
         #endregion
 
-        /// <summary>
-        /// Get the property with the specified name or null if it is not present
-        /// </summary>
-        T IPropertyProvider<T>.GetProperty(string name)
-        {
-            return this[name];
-        }
-
-        /// <summary>
-        /// Get the property with the specified name or null if it is not present.
-        /// Name is the segment of the provided string with the provided start and end indexes.
-        /// </summary>
-        T IPropertyProvider<T>.GetProperty(string name, int startIndex, int endIndex)
-        {
-            lock (_properties)
-            {
-                if (startIndex == 0 && endIndex == name.Length - 1)
-                {
-                    return this[name];
-                }
-
-                T returnValue = _comparer.GetValueWithConstraints<T>(this, name, startIndex, endIndex);
-                return returnValue;
-            }
-        }
-
         #region IDictionary<string,T> Members
 
         /// <summary>
@@ -357,7 +299,7 @@ namespace Microsoft.Build.Collections
         /// </summary>
         bool IDictionary<string, T>.ContainsKey(string key)
         {
-            return PropertyNames.Contains(key);
+            return _properties.ContainsKey(key);
         }
 
         /// <summary>
@@ -404,10 +346,9 @@ namespace Microsoft.Build.Collections
         /// </summary>
         bool ICollection<KeyValuePair<string, T>>.Contains(KeyValuePair<string, T> item)
         {
-            T value;
             lock (_properties)
             {
-                if (_properties.TryGetValue(item.Key, out value))
+                if (_properties.TryGetValue(item.Key, out T value))
                 {
                     return EqualityComparer<T>.Default.Equals(value, item.Value);
                 }
@@ -456,11 +397,24 @@ namespace Microsoft.Build.Collections
         /// </summary>
         internal bool Remove(string name)
         {
-            ErrorUtilities.VerifyThrowArgumentLength(name, "name");
+            return Remove(name, clearIfEmpty: false);
+        }
+
+        /// <summary>
+        /// Removes any property with the specified name.
+        /// Returns true if the property was in the collection, otherwise false.
+        /// </summary>
+        internal bool Remove(string name, bool clearIfEmpty)
+        {
+            ErrorUtilities.VerifyThrowArgumentLength(name, nameof(name));
 
             lock (_properties)
             {
                 bool result = _properties.Remove(name);
+                if (clearIfEmpty && _properties.Count == 0)
+                {
+                    _properties.Clear();
+                }
                 return result;
             }
         }
@@ -472,7 +426,7 @@ namespace Microsoft.Build.Collections
         /// </summary>
         internal void Set(T projectProperty)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(projectProperty, "projectProperty");
+            ErrorUtilities.VerifyThrowArgumentNull(projectProperty, nameof(projectProperty));
 
             lock (_properties)
             {
@@ -511,7 +465,7 @@ namespace Microsoft.Build.Collections
         /// </summary>
         internal IDictionary<string, string> ToDictionary()
         {
-            Dictionary<string, string> dictionary = null;
+            Dictionary<string, string> dictionary;
 
             lock (_properties)
             {

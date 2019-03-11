@@ -1,10 +1,5 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-// <copyright file="XslTransformation_Tests.cs" company="Microsoft">
-// Copyright (c) 2015 All Right Reserved
-// </copyright>
-// <date>2008-12-28</date>
-// <summary>The unit tests for XslTransformation buildtask.</summary>
 
 using Microsoft.Build.Framework;
 using Microsoft.Build.Tasks;
@@ -27,7 +22,8 @@ namespace Microsoft.Build.UnitTests
     sealed public class XmlPeek_Tests
     {
         private string _xmlFileWithNs = @"<?xml version='1.0' encoding='utf-8'?>
-        
+
+<!DOCTYPE plist PUBLIC ""-//Apple//DTD PLIST 1.0//EN"" ""http://www.apple.com/DTDs/PropertyList-1.0.dtd"">
 <class AccessModifier='public' Name='test' xmlns:s='http://nsurl'>
   <s:variable Type='String' Name='a'></s:variable>
   <s:variable Type='String' Name='b'></s:variable>
@@ -37,7 +33,8 @@ namespace Microsoft.Build.UnitTests
 ";
 
         private string _xmlFileWithNsWithText = @"<?xml version='1.0' encoding='utf-8'?>
-        
+
+<!DOCTYPE plist PUBLIC ""-//Apple//DTD PLIST 1.0//EN"" ""http://www.apple.com/DTDs/PropertyList-1.0.dtd"">
 <class AccessModifier='public' Name='test' xmlns:s='http://nsurl'>
   <s:variable Type='String' Name='a'>This</s:variable>
   <s:variable Type='String' Name='b'>is</s:variable>
@@ -46,7 +43,7 @@ namespace Microsoft.Build.UnitTests
 </class>
 ";
 
-        private string _xmlFileNoNs = @"<?xml version='1.0' encoding='utf-8'?>
+        private string _xmlFileNoNsNoDtd = @"<?xml version='1.0' encoding='utf-8'?>
         
 <class AccessModifier='public' Name='test'>
   <variable Type='String' Name='a'></variable>
@@ -75,7 +72,7 @@ namespace Microsoft.Build.UnitTests
             string[] results = new string[] { "a", "b", "c" };
             for (int i = 0; i < p.Result.Length; i++)
             {
-                Assert.True(p.Result[i].ItemSpec.Equals(results[i]), "Results don't match: " + p.Result[i].ItemSpec);
+                Assert.Equal(p.Result[i].ItemSpec, results[i]);
             }
         }
 
@@ -104,7 +101,7 @@ namespace Microsoft.Build.UnitTests
 
             for (int i = 0; i < p.Result.Length; i++)
             {
-                Assert.True(p.Result[i].ItemSpec.Equals(results[i]), "Results don't match: " + p.Result[i].ItemSpec);
+                Assert.Equal(p.Result[i].ItemSpec, results[i]);
             }
         }
 
@@ -121,7 +118,7 @@ namespace Microsoft.Build.UnitTests
             p.XmlInputPath = new TaskItem(xmlInputPath);
             p.Query = "//s:variable/text()";
             p.Namespaces = "<Namespace Prefix=\"s\" Uri=\"http://nsurl\" />";
-            Assert.True(p.Namespaces.Equals("<Namespace Prefix=\"s\" Uri=\"http://nsurl\" />"));
+            Assert.Equal("<Namespace Prefix=\"s\" Uri=\"http://nsurl\" />", p.Namespaces);
             Assert.True(p.Execute()); // "Test should've passed"
             Assert.Equal(3, p.Result.Length); // "result Length should be 3"
 
@@ -133,7 +130,7 @@ namespace Microsoft.Build.UnitTests
 
             for (int i = 0; i < p.Result.Length; i++)
             {
-                Assert.True(p.Result[i].ItemSpec.Equals(results[i]), "Results don't match: " + p.Result[i].ItemSpec);
+                Assert.Equal(p.Result[i].ItemSpec, results[i]);
             }
         }
 
@@ -142,7 +139,7 @@ namespace Microsoft.Build.UnitTests
         {
             MockEngine engine = new MockEngine(true);
             string xmlInputPath;
-            Prepare(_xmlFileNoNs, out xmlInputPath);
+            Prepare(_xmlFileNoNsNoDtd, out xmlInputPath);
 
             XmlPeek p = new XmlPeek();
             p.BuildEngine = engine;
@@ -155,7 +152,7 @@ namespace Microsoft.Build.UnitTests
             string[] results = new string[] { "a", "b", "c" };
             for (int i = 0; i < p.Result.Length; i++)
             {
-                Assert.True(p.Result[i].ItemSpec.Equals(results[i]), "Results don't match: " + p.Result[i].ItemSpec);
+                Assert.Equal(p.Result[i].ItemSpec, results[i]);
             }
         }
 
@@ -167,7 +164,7 @@ namespace Microsoft.Build.UnitTests
             XmlPeek p = new XmlPeek();
             p.BuildEngine = engine;
 
-            p.XmlContent = _xmlFileNoNs;
+            p.XmlContent = _xmlFileNoNsNoDtd;
             p.Query = "//variable/@Name";
 
             Assert.True(p.Execute()); // "Test should've passed"
@@ -175,7 +172,7 @@ namespace Microsoft.Build.UnitTests
             string[] results = new string[] { "a", "b", "c" };
             for (int i = 0; i < p.Result.Length; i++)
             {
-                Assert.True(p.Result[i].ItemSpec.Equals(results[i]), "Results don't match: " + p.Result[i].ItemSpec);
+                Assert.Equal(p.Result[i].ItemSpec, results[i]);
             }
         }
 
@@ -185,21 +182,21 @@ namespace Microsoft.Build.UnitTests
             MockEngine engine = new MockEngine(true);
 
             string xmlInputPath;
-            Prepare(_xmlFileNoNs, out xmlInputPath);
+            Prepare(_xmlFileNoNsNoDtd, out xmlInputPath);
 
             XmlPeek p = new XmlPeek();
             p.BuildEngine = engine;
 
             p.XmlInputPath = new TaskItem(xmlInputPath);
-            p.XmlContent = _xmlFileNoNs;
-            Assert.True(p.XmlInputPath.ItemSpec.Equals(xmlInputPath));
-            Assert.True(p.XmlContent.Equals(_xmlFileNoNs));
+            p.XmlContent = _xmlFileNoNsNoDtd;
+            Assert.Equal(xmlInputPath, p.XmlInputPath.ItemSpec);
+            Assert.Equal(_xmlFileNoNsNoDtd, p.XmlContent);
 
             p.Query = "//variable/@Name";
-            Assert.True(p.Query.Equals("//variable/@Name"));
+            Assert.Equal("//variable/@Name", p.Query);
 
             Assert.False(p.Execute()); // "Test should've failed"
-            Assert.True(engine.Log.Contains("MSB3741")); // "Error message MSB3741 should fire"
+            Assert.Contains("MSB3741", engine.Log); // "Error message MSB3741 should fire"
         }
 
         [Fact]
@@ -208,7 +205,7 @@ namespace Microsoft.Build.UnitTests
             MockEngine engine = new MockEngine(true);
 
             string xmlInputPath;
-            Prepare(_xmlFileNoNs, out xmlInputPath);
+            Prepare(_xmlFileNoNsNoDtd, out xmlInputPath);
 
             XmlPeek p = new XmlPeek();
             p.BuildEngine = engine;
@@ -216,7 +213,7 @@ namespace Microsoft.Build.UnitTests
             p.Query = "//variable/@Name";
 
             Assert.False(p.Execute()); // "Test should've failed"
-            Assert.True(engine.Log.Contains("MSB3741")); // "Error message MSB3741 should fire"
+            Assert.Contains("MSB3741", engine.Log); // "Error message MSB3741 should fire"
         }
 
         [Fact]
@@ -224,7 +221,7 @@ namespace Microsoft.Build.UnitTests
         {
             MockEngine engine = new MockEngine(true);
             string xmlInputPath;
-            Prepare(_xmlFileNoNs, out xmlInputPath);
+            Prepare(_xmlFileNoNsNoDtd, out xmlInputPath);
 
             XmlPeek p = new XmlPeek();
             p.BuildEngine = engine;
@@ -233,7 +230,25 @@ namespace Microsoft.Build.UnitTests
             p.Query = "//s:variable/@Name";
 
             Assert.False(p.Execute()); // "Test should've failed"
-            Assert.True(engine.Log.Contains("MSB3743")); // "Engine log should contain error code MSB3743"
+            Assert.Contains("MSB3743", engine.Log); // "Engine log should contain error code MSB3743"
+        }
+
+        [Fact]
+        public void PeekDtdWhenDtdProhibitedError()
+        {
+            MockEngine engine = new MockEngine(true);
+            string xmlInputPath;
+            Prepare(_xmlFileWithNs, out xmlInputPath);
+
+            XmlPeek p = new XmlPeek();
+            p.BuildEngine = engine;
+
+            p.ProhibitDtd = true;
+            p.XmlInputPath = new TaskItem(xmlInputPath);
+            p.Query = "//s:variable/@Name";
+
+            Assert.False(p.Execute()); // "Test should've failed"
+            Assert.Contains("MSB3733", engine.Log); // "Engine log should contain error code MSB3733"
         }
 
         [Fact]
@@ -305,7 +320,7 @@ namespace Microsoft.Build.UnitTests
             // The task won't complete properly, but ContinueOnError converts the errors to warnings, so the build should succeed
             MockLogger logger = ObjectModelHelpers.BuildProjectExpectSuccess(projectContents);
 
-            // Verify that the task was indeed found. 
+            // Verify that the task was indeed found.
             logger.AssertLogDoesntContain("MSB4036");
         }
 

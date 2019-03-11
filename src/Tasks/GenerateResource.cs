@@ -12,12 +12,15 @@ using System.Reflection;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Formatters.Binary;
 #endif
 using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
+#if FEATURE_COM_INTEROP
+using Microsoft.Win32;
+#endif
 using System.CodeDom;
 using System.CodeDom.Compiler;
 using System.Xml;
@@ -40,6 +43,7 @@ using System.Runtime.Versioning;
 
 using Microsoft.Build.Utilities;
 using System.Xml.Linq;
+using Microsoft.Build.Shared.FileSystem;
 
 namespace Microsoft.Build.Tasks
 {
@@ -59,7 +63,7 @@ namespace Microsoft.Build.Tasks
 
         #region Fields
 
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
         // This cache helps us track the linked resource files listed inside of a resx resource file
         private ResGenDependencies _cache;
 #endif
@@ -129,6 +133,7 @@ namespace Microsoft.Build.Tasks
         // Path to resgen.exe
         private string _resgenPath;
 
+#if FEATURE_APPDOMAIN
         // table of already seen types by their typename
         // note the use of the ordinal comparer that matches the case sensitive Type.GetType usage
         private Dictionary<string, Type> _typeTable = new Dictionary<string, Type>(StringComparer.Ordinal);
@@ -138,10 +143,13 @@ namespace Microsoft.Build.Tasks
         /// Ordinal comparer matches ResXResourceReader's use of a HashTable. 
         /// </summary>
         private Dictionary<string, string> _aliases = new Dictionary<string, string>(StringComparer.Ordinal);
+#endif // FEATURE_APPDOMAIN
 
+#if FEATURE_RESGEN
         // Our calculation is not quite correct. Using a number substantially less than 32768 in order to
         // be sure we don't exceed it.
         private static int s_maximumCommandLength = 28000;
+#endif // FEATURE_RESGEN
 
         // Contains the list of paths from which inputs will not be taken into account during up-to-date check.  
         private ITaskItem[] _excludedInputPaths;
@@ -159,9 +167,9 @@ namespace Microsoft.Build.Tasks
         /// </summary>
         private List<ITaskItem> _satelliteInputs;
 
-        #endregion  // fields
+#endregion  // fields
 
-        #region Properties
+#region Properties
 
         /// <summary>
         /// The names of the items to be converted. The extension must be one of the
@@ -520,7 +528,7 @@ namespace Microsoft.Build.Tasks
             set;
         }
 
-        #endregion // properties
+#endregion // properties
 
         /// <summary>
         /// Simple public constructor.
@@ -529,6 +537,29 @@ namespace Microsoft.Build.Tasks
         {
             // do nothing
         }
+
+#if FEATURE_COM_INTEROP
+        /// <summary>
+        /// Static constructor checks the registry opt-out for mark-of-the-web rejection.
+        /// </summary>
+        static GenerateResource()
+        {
+            if (!NativeMethodsShared.IsWindows)
+            {
+                allowMOTW = true;
+                return;
+            }
+            try
+            {
+                object allowUntrustedFiles = Registry.GetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\.NETFramework\SDK", "AllowProcessOfUntrustedResourceFiles", null);
+                if (allowUntrustedFiles is String)
+                {
+                    allowMOTW = ((string)allowUntrustedFiles).Equals("true", StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            catch { }
+        }
+#endif
 
         /// <summary>
         /// Logs a Resgen.exe command line that indicates what parameters were
@@ -715,6 +746,25 @@ namespace Microsoft.Build.Tasks
                         return false;
                     }
 
+                    // Check for the mark of the web on all possibly-exploitable files
+                    // to be processed.
+                    bool dangerousResourceFound = false;
+
+                    foreach (ITaskItem source in _sources)
+                    {
+                        if (IsDangerous(source.ItemSpec))
+                        {
+                            Log.LogErrorWithCodeFromResources("GenerateResource.MOTW", source.ItemSpec);
+                            dangerousResourceFound = true;
+                        }
+                    }
+
+                    if (dangerousResourceFound)
+                    {
+                        // Do no further processing
+                        return false;
+                    }
+
                     if (ExecuteAsTool)
                     {
                         outOfProcExecutionSucceeded = GenerateResourcesUsingResGen(inputsToProcess, outputsToProcess);
@@ -809,7 +859,7 @@ namespace Microsoft.Build.Tasks
                                     OutputResources = outputResources;
                                 }
 
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
                                 // Get portable library cache info (and if needed, marshal it to this AD).
                                 List<ResGenDependencies.PortableLibraryFile> portableLibraryCacheInfo = process.PortableLibraryCacheInfo;
                                 for (int i = 0; i < portableLibraryCacheInfo.Count; i++)
@@ -853,7 +903,7 @@ namespace Microsoft.Build.Tasks
                     }
                 }
 
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
                 // And now we serialize the cache to save our resgen linked file resolution for later use.
                 WriteStateFile();
 #endif
@@ -866,6 +916,107 @@ namespace Microsoft.Build.Tasks
             return !Log.HasLoggedErrors && outOfProcExecutionSucceeded;
         }
 
+#if FEATURE_COM_INTEROP
+        private static bool allowMOTW;
+
+        private const string CLSID_InternetSecurityManager = "7b8a2d94-0ac9-11d1-896c-00c04fb6bfc4";
+
+        private const uint ZoneLocalMachine = 0;
+
+        private const uint ZoneIntranet = 1;
+
+        private const uint ZoneTrusted = 2;
+
+        private const uint ZoneInternet = 3;
+
+        private const uint ZoneUntrusted = 4;
+
+        private static IInternetSecurityManager internetSecurityManager = null;
+
+        // Resources can have arbitrarily serialized objects in them which can execute arbitrary code
+        // so check to see if we should trust them before analyzing them
+        private bool IsDangerous(String filename)
+        {
+            // If they are opted out, there's no work to do
+            if (allowMOTW)
+            {
+                return false;
+            }
+
+            // First check the zone, if they are not an untrusted zone, they aren't dangerous
+
+            if (internetSecurityManager == null)
+            {
+                Type iismType = Type.GetTypeFromCLSID(new Guid(CLSID_InternetSecurityManager));
+                internetSecurityManager = (IInternetSecurityManager)Activator.CreateInstance(iismType);
+            }
+
+            Int32 zone = 0;
+            internetSecurityManager.MapUrlToZone(Path.GetFullPath(filename), out zone, 0);
+            if (zone < ZoneInternet)
+            {
+                return false;
+            }
+
+            // By default all file types that get here are considered dangerous
+            bool dangerous = true;
+
+            if (String.Equals(Path.GetExtension(filename), ".resx", StringComparison.OrdinalIgnoreCase) ||
+                String.Equals(Path.GetExtension(filename), ".resw", StringComparison.OrdinalIgnoreCase))
+            {
+                // XML files are only dangerous if there are unrecognized objects in them
+                dangerous = false;
+
+                FileStream stream = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read);
+                XmlTextReader reader = new XmlTextReader(stream);
+                reader.DtdProcessing = DtdProcessing.Ignore;
+                reader.XmlResolver = null;
+                try
+                {
+                    while (reader.Read())
+                    {
+                        if (reader.NodeType == XmlNodeType.Element)
+                        {
+                            string s = reader.LocalName;
+
+                            // We only want to parse data nodes,
+                            // the mimetype attribute gives the serializer
+                            // that's requested.
+                            if (reader.LocalName.Equals("data"))
+                            {
+                                if (reader["mimetype"] != null)
+                                {
+                                    dangerous = true;
+                                }
+                            }
+                            else if (reader.LocalName.Equals("metadata"))
+                            {
+                                if (reader["mimetype"] != null)
+                                {
+                                    dangerous = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // If we hit an error while parsing assume there's a dangerous type in this file.
+                    dangerous = true;
+                }
+                stream.Close();
+            }
+
+            return dangerous;
+        }
+#else
+        private bool IsDangerous(String filename)
+        {
+            return false;
+        }
+#endif
+
+#if FEATURE_APPDOMAIN
         /// <summary>
         /// For setting OutputResources and ensuring it can be read after the second AppDomain has been unloaded.
         /// </summary>
@@ -882,7 +1033,6 @@ namespace Microsoft.Build.Tasks
             return clonedOutput;
         }
 
-#if FEATURE_APPDOMAIN
         /// <summary>
         /// Remember this TaskItem so that we can disconnect it when this Task has finished executing
         /// Only if we're passing TaskItems to another AppDomain is this necessary. This call
@@ -896,7 +1046,7 @@ namespace Microsoft.Build.Tasks
                 _remotedTaskItems.AddRange(items);
             }
         }
-#endif
+#endif // FEATURE_APPDOMAIN
 
         /// <summary>
         /// Computes the path to ResGen.exe for use in logging and for passing to the 
@@ -1010,7 +1160,7 @@ namespace Microsoft.Build.Tasks
                 {
                     foreach (ITaskItem outputFile in outputFiles)
                     {
-                        if (!File.Exists(outputFile.ItemSpec))
+                        if (!FileSystems.Default.FileExists(outputFile.ItemSpec))
                         {
                             _unsuccessfullyCreatedOutFiles.Add(outputFile.ItemSpec);
                         }
@@ -1049,7 +1199,7 @@ namespace Microsoft.Build.Tasks
                     {
                         foreach (ITaskItem outputFile in outputFiles)
                         {
-                            if (!File.Exists(outputFile.ItemSpec))
+                            if (!FileSystems.Default.FileExists(outputFile.ItemSpec))
                             {
                                 _unsuccessfullyCreatedOutFiles.Add(outputFile.ItemSpec);
                             }
@@ -1064,8 +1214,6 @@ namespace Microsoft.Build.Tasks
 
             return succeeded;
         }
-#endif
-
 
         /// <summary>
         /// Given the list of inputs and outputs, returns the number of resources (starting at the provided initial index)
@@ -1106,8 +1254,6 @@ namespace Microsoft.Build.Tasks
             return numberOfResourcesToAdd;
         }
 
-
-#if FEATURE_RESGEN
         /// <summary>
         /// Given an instance of the ResGen task with everything but the strongly typed 
         /// resource-related parameters filled out, execute the task and return the result
@@ -1219,7 +1365,7 @@ namespace Microsoft.Build.Tasks
         /// <returns></returns>
         private void GetResourcesToProcess(out List<ITaskItem> inputsToProcess, out List<ITaskItem> outputsToProcess, out List<ITaskItem> cachedOutputFiles)
         {
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
             // First we look to see if we have a resgen linked files cache.  If so, then we can use that
             // cache to speed up processing.
             ReadStateFile();
@@ -1235,7 +1381,7 @@ namespace Microsoft.Build.Tasks
             {
                 if (ExtractResWFiles)
                 {
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
                     // We can't cheaply predict the output files, since that would require
                     // loading each assembly.  So don't even try guessing what they will be.
                     // However, our cache will sometimes record all the info we need (for incremental builds).
@@ -1249,7 +1395,7 @@ namespace Microsoft.Build.Tasks
                     {
 #endif
                         inputsToProcess.Add(Sources[i]);
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
                     }
 #endif
 
@@ -1260,7 +1406,7 @@ namespace Microsoft.Build.Tasks
                 Sources[i].CopyMetadataTo(OutputResources[i]);
                 Sources[i].SetMetadata("OutputResource", OutputResources[i].ItemSpec);
 
-                if (!File.Exists(Sources[i].ItemSpec))
+                if (!FileSystems.Default.FileExists(Sources[i].ItemSpec))
                 {
                     // Error but continue with the files that do exist
                     Log.LogErrorWithCodeFromResources("GenerateResource.ResourceNotFound", Sources[i].ItemSpec);
@@ -1285,14 +1431,14 @@ namespace Microsoft.Build.Tasks
             {
                 // We're generating a STR class file, so there must be exactly one input resource file.
                 // If that resource file itself is out of date, the STR class file is going to get generated anyway.
-                if (nothingOutOfDate && File.Exists(Sources[0].ItemSpec))
+                if (nothingOutOfDate && FileSystems.Default.FileExists(Sources[0].ItemSpec))
                 {
                     GetStronglyTypedResourceToProcess(ref inputsToProcess, ref outputsToProcess);
                 }
             }
         }
 
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
         /// <summary>
         /// Given a cached portable library that is up to date, create ITaskItems to represent the output of the task, as if we did real work.
         /// </summary>
@@ -1383,7 +1529,7 @@ namespace Microsoft.Build.Tasks
                 return NeedToRebuildSourceFile(sourceTime, outputTime);
             }
 
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
             // OK, we have a .resx file
 
             // PERF: Regardless of whether the outputFile exists, if the source file is a .resx 
@@ -1790,7 +1936,7 @@ namespace Microsoft.Build.Tasks
 
                         return true;
                     }
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
                     catch (SerializationException e)
                     {
                         Log.LogMessageFromResources
@@ -1856,7 +2002,7 @@ namespace Microsoft.Build.Tasks
         /// </summary>
         private bool NeedSeparateAppDomainBasedOnSerializedType(XmlReader reader)
         {
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
             while (reader.Read())
             {
                 if (reader.NodeType == XmlNodeType.Element)
@@ -1885,7 +2031,7 @@ namespace Microsoft.Build.Tasks
         }
 #endif
 
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
         /// <summary>
         /// Deserializes a base64 block from a resx in order to figure out if its type is in the GAC.
         /// Because we're not providing any assembly resolution callback, deserialization
@@ -1905,7 +2051,6 @@ namespace Microsoft.Build.Tasks
                 return (result != null);
             }
         }
-#endif
 
         /// <summary>
         /// Chars that should be ignored in the nicely justified block of base64
@@ -1941,6 +2086,7 @@ namespace Microsoft.Build.Tasks
                 return Convert.FromBase64String(text);
             }
         }
+#endif // FEATURE_RESGENCACHE
 
         /// <summary>
         /// Make sure that OutputResources has 1 file name for each name in Sources.
@@ -2085,7 +2231,7 @@ namespace Microsoft.Build.Tasks
         }
 #endif
 
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
         /// <summary>
         /// Read the state file if able.
         /// </summary>
@@ -2124,7 +2270,7 @@ namespace Microsoft.Build.Tasks
         : MarshalByRefObject
 #endif
     {
-        #region fields
+#region fields
         /// <summary>
         /// List of readers used for input.
         /// </summary>
@@ -2245,7 +2391,7 @@ namespace Microsoft.Build.Tasks
         }
         private List<ITaskItem> _extractedResWFiles;
 
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
         /// <summary>
         /// Record all the information about outputs here to avoid future incremental builds.
         /// </summary>
@@ -2315,7 +2461,7 @@ namespace Microsoft.Build.Tasks
             _readers = new List<ReaderInfo>();
             _extractResWFiles = extractingResWFiles;
             _resWOutputDirectory = resWOutputDirectory;
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
             _portableLibraryCacheInfo = new List<ResGenDependencies.PortableLibraryFile>();
 #endif
 
@@ -2383,7 +2529,7 @@ namespace Microsoft.Build.Tasks
                         ITaskItem assemblyFile = _assemblyFiles[i];
                         _assemblyNames[i] = null;
 
-                        if (assemblyFile.ItemSpec != null && File.Exists(assemblyFile.ItemSpec))
+                        if (assemblyFile.ItemSpec != null && FileSystems.Default.FileExists(assemblyFile.ItemSpec))
                         {
                             string fusionName = assemblyFile.GetMetadata(ItemMetadataNames.fusionName);
                             if (!String.IsNullOrEmpty(fusionName))
@@ -2514,7 +2660,7 @@ namespace Microsoft.Build.Tasks
                 return false;
             }
             catch (Exception e) when (
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
                                       e is SerializationException ||
 #endif
                                       e is TargetInvocationException)
@@ -2547,7 +2693,7 @@ namespace Microsoft.Build.Tasks
             {
                 if (GetFormat(inFile) == Format.Assembly)
                 {
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
                     // Prepare cache data
                     ResGenDependencies.PortableLibraryFile library = new ResGenDependencies.PortableLibraryFile(inFile);
 #endif
@@ -2563,7 +2709,7 @@ namespace Microsoft.Build.Tasks
                         currentOutputDirectory = Path.Combine(priDirectory,
                             reader.cultureName ?? String.Empty);
 
-                        if (!Directory.Exists(currentOutputDirectory))
+                        if (!FileSystems.Default.DirectoryExists(currentOutputDirectory))
                         {
                             currentOutputDirectoryAlreadyExisted = false;
                             Directory.CreateDirectory(currentOutputDirectory);
@@ -2591,20 +2737,20 @@ namespace Microsoft.Build.Tasks
                         ITaskItem newOutputFile = new TaskItem(escapedOutputFile);
                         resWFilesForThisAssembly.Add(escapedOutputFile);
                         newOutputFile.SetMetadata("ResourceIndexName", reader.assemblySimpleName);
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
                         library.AssemblySimpleName = reader.assemblySimpleName;
 #endif
                         if (reader.fromNeutralResources)
                         {
                             newOutputFile.SetMetadata("NeutralResourceLanguage", reader.cultureName);
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
                             library.NeutralResourceLanguage = reader.cultureName;
 #endif
                         }
                         ExtractedResWFiles.Add(newOutputFile);
                     }
 
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
                     library.OutputFiles = resWFilesForThisAssembly.ToArray();
                     _portableLibraryCacheInfo.Add(library);
 #endif
@@ -2633,7 +2779,7 @@ namespace Microsoft.Build.Tasks
                         _logger.LogErrorWithCodeFromResources("GenerateResource.CannotWriteSTRFile",
                             _stronglyTypedFilename, e.Message);
 
-                        if (File.Exists(outFileOrDir)
+                        if (FileSystems.Default.FileExists(outFileOrDir)
                             && GetFormat(inFile) != Format.Assembly
                             // outFileOrDir is a directory when the input file is an assembly
                             && GetFormat(outFileOrDir) != Format.Assembly)
@@ -2655,7 +2801,7 @@ namespace Microsoft.Build.Tasks
                 {
                     _logger.LogErrorWithCodeFromResources("GenerateResource.CannotWriteOutput",
                         FileUtilities.GetFullPathNoThrow(currentOutputFile), io.Message);
-                    if (File.Exists(currentOutputFile))
+                    if (FileSystems.Default.FileExists(currentOutputFile))
                     {
                         if (GetFormat(currentOutputFile) != Format.Assembly)
                             // Never delete an assembly since we don't ever actually write to assemblies.
@@ -2685,7 +2831,7 @@ namespace Microsoft.Build.Tasks
                 return false;
             }
             catch (Exception e) when (
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
                                       e is SerializationException ||
 #endif
                                       e is TargetInvocationException)
@@ -2725,6 +2871,11 @@ namespace Microsoft.Build.Tasks
         /// <returns>The current path or a shorter one.</returns>
         private string EnsurePathIsShortEnough(string currentOutputFile, string currentOutputFileNoPath, string outputDirectory, string cultureName)
         {
+            if (!NativeMethodsShared.HasMaxPath)
+            {
+                return Path.GetFullPath(currentOutputFile);
+            }
+
             // File names >= 260 characters won't work.  File names of exactly 259 characters are odd though.
             // They seem to work with Notepad and Windows Explorer, but not with MakePri.  They don't work
             // reliably with cmd's dir command either (depending on whether you use absolute or relative paths
@@ -2744,7 +2895,7 @@ namespace Microsoft.Build.Tasks
             if (!success)
             {
                 string shorterPath = Path.Combine(outputDirectory ?? String.Empty, cultureName ?? String.Empty);
-                if (!Directory.Exists(shorterPath))
+                if (!FileSystems.Default.DirectoryExists(shorterPath))
                 {
                     Directory.CreateDirectory(shorterPath);
                 }
@@ -2905,12 +3056,17 @@ namespace Microsoft.Build.Tasks
                         ReadResources(reader, resXReader, filename);
                         break;
 #else
-                        XDocument doc = XDocument.Load(filename, LoadOptions.PreserveWhitespace);
-                        foreach (XElement dataElem in doc.Element("root").Elements("data"))
+
+                        using (var xmlReader = new XmlTextReader(filename))
                         {
-                            string name = dataElem.Attribute("name").Value;
-                            string value = dataElem.Element("value").Value;
-                            AddResource(reader, name, value, filename);
+                            xmlReader.WhitespaceHandling = WhitespaceHandling.None;
+                            XDocument doc = XDocument.Load(xmlReader, LoadOptions.PreserveWhitespace);
+                            foreach (XElement dataElem in doc.Element("root").Elements("data"))
+                            {
+                                string name = dataElem.Attribute("name").Value;
+                                string value = dataElem.Element("value").Value;
+                                AddResource(reader, name, value, filename);
+                            }
                         }
                         break;
 #endif
@@ -2941,7 +3097,7 @@ namespace Microsoft.Build.Tasks
         internal void ReadAssemblyResources(String name, String outFileOrDir)
         {
             // If something else in the solution failed to build...
-            if (!File.Exists(name))
+            if (!FileSystems.Default.FileExists(name))
             {
                 _logger.LogErrorWithCodeFromResources("GenerateResource.MissingFile", name);
                 return;
@@ -3334,7 +3490,7 @@ namespace Microsoft.Build.Tasks
                 }
             }
         }
-#endif
+#endif // FEATURE_RESX_RESOURCE_READER
 
         /// <summary>
         /// Read resources from a text format file
@@ -3517,11 +3673,7 @@ namespace Microsoft.Build.Tasks
         /// <remarks>Closes writer automatically</remarks>
         /// <param name="writer">Appropriate IResourceWriter</param>
         private void WriteResources(ReaderInfo reader,
-#if FEATURE_RESX_RESOURCE_READER
             IResourceWriter writer)
-#else
-            ResourceWriter writer)
-#endif
         {
             Exception capturedException = null;
             try
@@ -3530,11 +3682,7 @@ namespace Microsoft.Build.Tasks
                 {
                     string key = entry.name;
                     object value = entry.value;
-#if FEATURE_RESX_RESOURCE_READER
                     writer.AddResource(key, value);
-#else
-                    writer.AddResource(key, (string) value);
-#endif
                 }
             }
             catch (Exception e)
@@ -3738,7 +3886,7 @@ namespace Microsoft.Build.Tasks
             private int lineNumber;
             private int column;
 
-#if FEATURE_BINARY_SERIALIZATION
+#if FEATURE_RESGENCACHE
             /// <summary>
             /// Fxcop want to have the correct basic exception constructors implemented
             /// </summary>

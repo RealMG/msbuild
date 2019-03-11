@@ -1,18 +1,12 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>A dictionary over properties or metadata.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Threading;
 using System.Diagnostics;
 using Microsoft.Build.Shared;
 using Microsoft.Build.Evaluation;
-using Microsoft.Build.Framework;
 
 namespace Microsoft.Build.Collections
 {
@@ -46,20 +40,14 @@ namespace Microsoft.Build.Collections
         /// Backing dictionary
         /// </summary>
         [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
-        private RetrievableEntryHashSet<T> _properties;
-
-        /// <summary>
-        /// Comparer whose start and end indexes we can manipulate as necessary.
-        /// </summary>
-        private MSBuildNameIgnoreCaseComparer _comparer;
+        private readonly RetrievableEntryHashSet<T> _properties;
 
         /// <summary>
         /// Creates empty dictionary
         /// </summary>
         public PropertyDictionary()
         {
-            _comparer = MSBuildNameIgnoreCaseComparer.Mutable;
-            _properties = new RetrievableEntryHashSet<T>(_comparer);
+            _properties = new RetrievableEntryHashSet<T>(MSBuildNameIgnoreCaseComparer.Default);
         }
 
         /// <summary>
@@ -67,8 +55,7 @@ namespace Microsoft.Build.Collections
         /// </summary>
         internal PropertyDictionary(int capacity)
         {
-            _comparer = MSBuildNameIgnoreCaseComparer.Mutable;
-            _properties = new RetrievableEntryHashSet<T>(capacity, _comparer);
+            _properties = new RetrievableEntryHashSet<T>(capacity, MSBuildNameIgnoreCaseComparer.Default);
         }
 
         /// <summary>
@@ -88,8 +75,7 @@ namespace Microsoft.Build.Collections
         /// </summary>
         internal PropertyDictionary(MSBuildNameIgnoreCaseComparer comparer)
         {
-            _comparer = comparer;
-            _properties = new RetrievableEntryHashSet<T>(_comparer);
+            _properties = new RetrievableEntryHashSet<T>(comparer);
         }
 
         /// <summary>
@@ -153,13 +139,7 @@ namespace Microsoft.Build.Collections
         /// Whether the collection is read-only.
         /// </summary>
         [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-        bool ICollection<KeyValuePair<string, T>>.IsReadOnly
-        {
-            get
-            {
-                return false;
-            }
-        }
+        bool ICollection<KeyValuePair<string, T>>.IsReadOnly => false;
 
         /// <summary>
         /// Returns the number of property in the collection.
@@ -186,15 +166,8 @@ namespace Microsoft.Build.Collections
         /// </remarks>
         T IDictionary<string, T>.this[string name]
         {
-            get
-            {
-                return this[name];
-            }
-
-            set
-            {
-                this[name] = value;
-            }
+            get => this[name];
+            set => this[name] = value;
         }
 
         /// <summary>
@@ -296,7 +269,7 @@ namespace Microsoft.Build.Collections
                 return false;
             }
 
-            if (Object.ReferenceEquals(this, other))
+            if (ReferenceEquals(this, other))
             {
                 return true;
             }
@@ -340,14 +313,7 @@ namespace Microsoft.Build.Collections
         {
             lock (_properties)
             {
-                if (startIndex == 0 && endIndex == name.Length - 1)
-                {
-                    return this[name];
-                }
-
-                T returnValue = _comparer.GetValueWithConstraints<T>(this, name, startIndex, endIndex);
-
-                return returnValue;
+                return _properties.Get(name, startIndex, endIndex - startIndex + 1);
             }
         }
 
@@ -420,10 +386,9 @@ namespace Microsoft.Build.Collections
         {
             lock (_properties)
             {
-                T value;
-                if (_properties.TryGetValue(item.Key, out value))
+                if (_properties.TryGetValue(item.Key, out T value))
                 {
-                    return Object.ReferenceEquals(value, item.Value);
+                    return ReferenceEquals(value, item.Value);
                 }
             }
 
@@ -475,7 +440,7 @@ namespace Microsoft.Build.Collections
         /// </summary>
         internal bool Remove(string name)
         {
-            ErrorUtilities.VerifyThrowArgumentLength(name, "name");
+            ErrorUtilities.VerifyThrowArgumentLength(name, nameof(name));
 
             lock (_properties)
             {
@@ -491,7 +456,7 @@ namespace Microsoft.Build.Collections
         /// </summary>
         internal void Set(T projectProperty)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(projectProperty, "projectProperty");
+            ErrorUtilities.VerifyThrowArgumentNull(projectProperty, nameof(projectProperty));
 
             lock (_properties)
             {
@@ -528,9 +493,9 @@ namespace Microsoft.Build.Collections
         /// <summary>
         /// Helper to convert into a read-only dictionary of string, string.
         /// </summary>
-        internal IDictionary<string, string> ToDictionary()
+        internal Dictionary<string, string> ToDictionary()
         {
-            Dictionary<string, string> dictionary = null;
+            Dictionary<string, string> dictionary;
 
             lock (_properties)
             {

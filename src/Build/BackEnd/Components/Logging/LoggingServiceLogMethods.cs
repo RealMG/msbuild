@@ -1,8 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-// </copyright>
-// <summary>Logging service which assists in getting build events to the correct loggers</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections;
@@ -13,6 +10,7 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 using Microsoft.Build.BackEnd;
+using Microsoft.Build.BackEnd.Components.Logging;
 using Microsoft.Build.Collections;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
@@ -143,7 +141,7 @@ namespace Microsoft.Build.BackEnd.Logging
 
                 string errorCode;
                 string helpKeyword;
-                string message = ResourceUtilities.FormatResourceString(out errorCode, out helpKeyword, messageResourceName, messageArgs);
+                string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword(out errorCode, out helpKeyword, messageResourceName, messageArgs);
 
                 LogErrorFromText(buildEventContext, subcategoryResourceName, errorCode, helpKeyword, file, message);
             }
@@ -303,7 +301,7 @@ namespace Microsoft.Build.BackEnd.Logging
 
                 string errorCode;
                 string helpKeyword;
-                string message = ResourceUtilities.FormatResourceString(out errorCode, out helpKeyword, messageResourceName, messageArgs);
+                string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword(out errorCode, out helpKeyword, messageResourceName, messageArgs);
 #if DEBUG
                 message += Environment.NewLine + "This is an unhandled exception from a task -- PLEASE OPEN A BUG AGAINST THE TASK OWNER.";
 #endif
@@ -342,7 +340,7 @@ namespace Microsoft.Build.BackEnd.Logging
 
                 string warningCode;
                 string helpKeyword;
-                string message = ResourceUtilities.FormatResourceString(out warningCode, out helpKeyword, "FatalTaskError", taskName);
+                string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword(out warningCode, out helpKeyword, "FatalTaskError", taskName);
 #if DEBUG
                 message += Environment.NewLine + "This is an unhandled exception from a task -- PLEASE OPEN A BUG AGAINST THE TASK OWNER.";
 #endif
@@ -372,7 +370,7 @@ namespace Microsoft.Build.BackEnd.Logging
 
                 string warningCode;
                 string helpKeyword;
-                string message = ResourceUtilities.FormatResourceString(out warningCode, out helpKeyword, messageResourceName, messageArgs);
+                string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword(out warningCode, out helpKeyword, messageResourceName, messageArgs);
                 LogWarningFromText(buildEventContext, subcategoryResourceName, warningCode, helpKeyword, file, message);
             }
         }
@@ -396,7 +394,7 @@ namespace Microsoft.Build.BackEnd.Logging
 
                 string subcategory = null;
 
-                if (subcategoryResourceName != null)
+                if (!string.IsNullOrWhiteSpace(subcategoryResourceName))
                 {
                     subcategory = AssemblyResources.GetString(subcategoryResourceName);
                 }
@@ -444,7 +442,7 @@ namespace Microsoft.Build.BackEnd.Logging
                 string message = String.Empty;
                 if (!OnlyLogCriticalEvents)
                 {
-                    message = ResourceUtilities.FormatResourceString("BuildStarted");
+                    message = ResourceUtilities.GetResourceString("BuildStarted");
                 }
 
                 IDictionary<string, string> environmentProperties = null;
@@ -480,7 +478,7 @@ namespace Microsoft.Build.BackEnd.Logging
                 string message = String.Empty;
                 if (!OnlyLogCriticalEvents)
                 {
-                    message = ResourceUtilities.FormatResourceString(success ? "BuildFinishedSuccess" : "BuildFinishedFailure");
+                    message = ResourceUtilities.GetResourceString(success ? "BuildFinishedSuccess" : "BuildFinishedFailure");
                 }
 
                 BuildFinishedEventArgs buildEvent = new BuildFinishedEventArgs(message, null /* no help keyword */, success);
@@ -491,6 +489,51 @@ namespace Microsoft.Build.BackEnd.Logging
                 {
                     WaitForThreadToProcessEvents();
                 }
+            }
+        }
+
+        /// <inheritdoc />
+        public BuildEventContext CreateEvaluationBuildEventContext(int nodeId, int submissionId)
+        {
+            return new BuildEventContext(submissionId, nodeId, NextEvaluationId, BuildEventContext.InvalidProjectInstanceId, BuildEventContext.InvalidProjectContextId, BuildEventContext.InvalidTargetId, BuildEventContext.InvalidTaskId);
+        }
+
+        /// <inheritdoc />
+        public void LogProjectEvaluationStarted(BuildEventContext projectEvaluationEventContext, string projectFile)
+        {
+            lock (_lockObject)
+            {
+                ProjectEvaluationStartedEventArgs evaluationEvent =
+                    new ProjectEvaluationStartedEventArgs(ResourceUtilities.GetResourceString("EvaluationStarted"),
+                        projectFile)
+                    {
+                        BuildEventContext = projectEvaluationEventContext,
+                        ProjectFile = projectFile
+                    };
+
+                ProcessLoggingEvent(evaluationEvent);
+            }
+        }
+
+        /// <summary>
+        /// Logs that a project evaluation has finished
+        /// </summary>
+        /// <param name="projectEvaluationEventContext">Event context for the project.</param>
+        /// <param name="projectFile">Project file being built</param>
+        /// <exception cref="InternalErrorException">BuildEventContext is null</exception>
+        public void LogProjectEvaluationFinished(BuildEventContext projectEvaluationEventContext, string projectFile)
+        {
+            lock (_lockObject)
+            {
+                ErrorUtilities.VerifyThrow(projectEvaluationEventContext != null, "projectBuildEventContext");
+
+                ProjectEvaluationFinishedEventArgs buildEvent =
+                    new ProjectEvaluationFinishedEventArgs(ResourceUtilities.GetResourceString("EvaluationFinished"), projectFile)
+                    {
+                        BuildEventContext = projectEvaluationEventContext,
+                        ProjectFile = projectFile
+                    };
+                ProcessLoggingEvent(buildEvent);
             }
         }
 
@@ -533,11 +576,11 @@ namespace Microsoft.Build.BackEnd.Logging
                 // default targets.
                 if (!String.IsNullOrEmpty(targetNames))
                 {
-                    message = ResourceUtilities.FormatResourceString("ProjectStartedPrefixForTopLevelProjectWithTargetNames", projectFilePath, targetNames);
+                    message = ResourceUtilities.FormatResourceStringIgnoreCodeAndKeyword("ProjectStartedPrefixForTopLevelProjectWithTargetNames", projectFilePath, targetNames);
                 }
                 else
                 {
-                    message = ResourceUtilities.FormatResourceString("ProjectStartedPrefixForTopLevelProjectWithDefaultTargets", projectFilePath);
+                    message = ResourceUtilities.FormatResourceStringIgnoreCodeAndKeyword("ProjectStartedPrefixForTopLevelProjectWithDefaultTargets", projectFilePath);
                 }
 
                 ErrorUtilities.VerifyThrow(_configCache.Value.HasConfiguration(projectInstanceId), "Cannot find the project configuration while injecting non-serialized data from out-of-proc node.");
@@ -576,7 +619,7 @@ namespace Microsoft.Build.BackEnd.Logging
             {
                 ErrorUtilities.VerifyThrow(projectBuildEventContext != null, "projectBuildEventContext");
 
-                string message = ResourceUtilities.FormatResourceString((success ? "ProjectFinishedSuccess" : "ProjectFinishedFailure"), Path.GetFileName(projectFile));
+                string message = ResourceUtilities.FormatResourceStringIgnoreCodeAndKeyword((success ? "ProjectFinishedSuccess" : "ProjectFinishedFailure"), Path.GetFileName(projectFile));
 
                 ProjectFinishedEventArgs buildEvent = new ProjectFinishedEventArgs
                     (
@@ -606,9 +649,10 @@ namespace Microsoft.Build.BackEnd.Logging
         /// <param name="projectFile">Project file being built</param>
         /// <param name="projectFileOfTargetElement">Project file which contains the target</param>
         /// <param name="parentTargetName">The name of the parent target.</param>
+        /// <param name="buildReason">The reason the parent target built the target.</param>
         /// <returns>The build event context for the target.</returns>
         /// <exception cref="InternalErrorException">BuildEventContext is null</exception>
-        public BuildEventContext LogTargetStarted(BuildEventContext projectBuildEventContext, string targetName, string projectFile, string projectFileOfTargetElement, string parentTargetName)
+        public BuildEventContext LogTargetStarted(BuildEventContext projectBuildEventContext, string targetName, string projectFile, string projectFileOfTargetElement, string parentTargetName, TargetBuiltReason buildReason)
         {
             lock (_lockObject)
             {
@@ -630,22 +674,22 @@ namespace Microsoft.Build.BackEnd.Logging
                     {
                         if (!String.IsNullOrEmpty(parentTargetName))
                         {
-                            message = ResourceUtilities.FormatResourceString("TargetStartedProjectDepends", targetName, projectFile, parentTargetName);
+                            message = ResourceUtilities.FormatResourceStringIgnoreCodeAndKeyword("TargetStartedProjectDepends", targetName, projectFile, parentTargetName);
                         }
                         else
                         {
-                            message = ResourceUtilities.FormatResourceString("TargetStartedProjectEntry", targetName, projectFile);
+                            message = ResourceUtilities.FormatResourceStringIgnoreCodeAndKeyword("TargetStartedProjectEntry", targetName, projectFile);
                         }
                     }
                     else
                     {
                         if (!String.IsNullOrEmpty(parentTargetName))
                         {
-                            message = ResourceUtilities.FormatResourceString("TargetStartedFileProjectDepends", targetName, projectFileOfTargetElement, projectFile, parentTargetName);
+                            message = ResourceUtilities.FormatResourceStringIgnoreCodeAndKeyword("TargetStartedFileProjectDepends", targetName, projectFileOfTargetElement, projectFile, parentTargetName);
                         }
                         else
                         {
-                            message = ResourceUtilities.FormatResourceString("TargetStartedFileProjectEntry", targetName, projectFileOfTargetElement, projectFile);
+                            message = ResourceUtilities.FormatResourceStringIgnoreCodeAndKeyword("TargetStartedFileProjectEntry", targetName, projectFileOfTargetElement, projectFile);
                         }
                     }
 
@@ -657,6 +701,7 @@ namespace Microsoft.Build.BackEnd.Logging
                             projectFile,
                             projectFileOfTargetElement,
                             parentTargetName,
+                            buildReason,
                             DateTime.UtcNow
                         );
                     buildEvent.BuildEventContext = targetBuildEventContext;
@@ -685,7 +730,7 @@ namespace Microsoft.Build.BackEnd.Logging
                 {
                     ErrorUtilities.VerifyThrow(targetBuildEventContext != null, "targetBuildEventContext is null");
 
-                    string message = ResourceUtilities.FormatResourceString((success ? "TargetFinishedSuccess" : "TargetFinishedFailure"), targetName, Path.GetFileName(projectFile));
+                    string message = ResourceUtilities.FormatResourceStringIgnoreCodeAndKeyword((success ? "TargetFinishedSuccess" : "TargetFinishedFailure"), targetName, Path.GetFileName(projectFile));
 
                     TargetFinishedEventArgs buildEvent = new TargetFinishedEventArgs
                         (
@@ -721,7 +766,7 @@ namespace Microsoft.Build.BackEnd.Logging
                 {
                     TaskStartedEventArgs buildEvent = new TaskStartedEventArgs
                         (
-                            ResourceUtilities.FormatResourceString("TaskStarted", taskName),
+                            ResourceUtilities.FormatResourceStringIgnoreCodeAndKeyword("TaskStarted", taskName),
                             null, // no help keyword
                             projectFile,
                             projectFileOfTaskNode,
@@ -761,7 +806,7 @@ namespace Microsoft.Build.BackEnd.Logging
                 {
                     TaskStartedEventArgs buildEvent = new TaskStartedEventArgs
                         (
-                            ResourceUtilities.FormatResourceString("TaskStarted", taskName),
+                            ResourceUtilities.FormatResourceStringIgnoreCodeAndKeyword("TaskStarted", taskName),
                             null, // no help keyword
                             projectFile,
                             projectFileOfTaskNode,
@@ -791,7 +836,7 @@ namespace Microsoft.Build.BackEnd.Logging
                 if (!OnlyLogCriticalEvents)
                 {
                     ErrorUtilities.VerifyThrow(taskBuildEventContext != null, "taskBuildEventContext is null");
-                    string message = ResourceUtilities.FormatResourceString((success ? "TaskFinishedSuccess" : "TaskFinishedFailure"), taskName);
+                    string message = ResourceUtilities.FormatResourceStringIgnoreCodeAndKeyword((success ? "TaskFinishedSuccess" : "TaskFinishedFailure"), taskName);
 
                     TaskFinishedEventArgs buildEvent = new TaskFinishedEventArgs
                         (

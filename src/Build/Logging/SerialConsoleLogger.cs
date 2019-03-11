@@ -384,10 +384,10 @@ namespace Microsoft.Build.BackEnd.Logging
 
                     if (targetOutputs != null)
                     {
-                        WriteLinePretty(ResourceUtilities.FormatResourceString("TargetOutputItemsHeader"));
+                        WriteLinePretty(ResourceUtilities.GetResourceString("TargetOutputItemsHeader"));
                         foreach (ITaskItem item in targetOutputs)
                         {
-                            WriteLinePretty(ResourceUtilities.FormatResourceString("TargetOutputItem", item.ItemSpec));
+                            WriteLinePretty(ResourceUtilities.FormatResourceStringIgnoreCodeAndKeyword("TargetOutputItem", item.ItemSpec));
                         }
                     }
                 }
@@ -809,9 +809,6 @@ namespace Microsoft.Build.BackEnd.Logging
             if (!condition && !ignoreLoggerErrors)
             {
                 string errorMessage = "INTERNAL CONSOLE LOGGER ERROR. " + ResourceUtilities.FormatString(unformattedMessage, args);
-                BuildErrorEventArgs errorEvent = new BuildErrorEventArgs(null, null, null, 0, 0, 0, 0,
-                    errorMessage, null, null);
-
                 ErrorUtilities.ThrowInternalError(errorMessage);
             }
         }

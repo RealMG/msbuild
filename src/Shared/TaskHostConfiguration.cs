@@ -1,10 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>A packet which contains information needed for the task host to 
-// configure itself for to execute a particular task.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
@@ -92,7 +87,6 @@ namespace Microsoft.Build.BackEnd
         /// </summary>
         private Dictionary<string, TaskParameter> _taskParameters;
 
-#if FEATURE_APPDOMAIN
         /// <summary>
         /// Constructor
         /// </summary>
@@ -116,47 +110,17 @@ namespace Microsoft.Build.BackEnd
                 IDictionary<string, string> buildProcessEnvironment,
                 CultureInfo culture,
                 CultureInfo uiCulture,
+#if FEATURE_APPDOMAIN
                 AppDomainSetup appDomainSetup,
-                int lineNumberOfTask,
-                int columnNumberOfTask,
-                string projectFileOfTask,
-                bool continueOnError,
-                string taskName,
-                string taskLocation,
-                IDictionary<string, object> taskParameters
-            )
-#else
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="nodeId">The ID of the node being configured.</param>
-        /// <param name="startupDirectory">The startup directory for the task being executed.</param>
-        /// <param name="buildProcessEnvironment">The set of environment variables to apply to the task execution process.</param>
-        /// <param name="culture">The culture of the thread that will execute the task.</param>
-        /// <param name="uiCulture">The UI culture of the thread that will execute the task.</param>
-        /// <param name="lineNumberOfTask">The line number of the location from which this task was invoked.</param>
-        /// <param name="columnNumberOfTask">The column number of the location from which this task was invoked.</param>
-        /// <param name="projectFileOfTask">The project file from which this task was invoked.</param>
-        /// <param name="continueOnError">Flag to continue with the build after a the task failed</param>
-        /// <param name="taskName">Name of the task.</param>
-        /// <param name="taskLocation">Location of the assembly the task is to be loaded from.</param>
-        /// <param name="taskParameters">Parameters to apply to the task.</param>
-        public TaskHostConfiguration
-            (
-                int nodeId,
-                string startupDirectory,
-                IDictionary<string, string> buildProcessEnvironment,
-                CultureInfo culture,
-                CultureInfo uiCulture,
-                int lineNumberOfTask,
-                int columnNumberOfTask,
-                string projectFileOfTask,
-                bool continueOnError,
-                string taskName,
-                string taskLocation,
-                IDictionary<string, object> taskParameters
-            )
 #endif
+                int lineNumberOfTask,
+                int columnNumberOfTask,
+                string projectFileOfTask,
+                bool continueOnError,
+                string taskName,
+                string taskLocation,
+                IDictionary<string, object> taskParameters
+            )
         {
             ErrorUtilities.VerifyThrowInternalLength(taskName, "taskName");
             ErrorUtilities.VerifyThrowInternalLength(taskLocation, "taskLocation");
@@ -351,14 +315,14 @@ namespace Microsoft.Build.BackEnd
         /// Translates the packet to/from binary form.
         /// </summary>
         /// <param name="translator">The translator to use.</param>
-        public void Translate(INodePacketTranslator translator)
+        public void Translate(ITranslator translator)
         {
             translator.Translate(ref _nodeId);
             translator.Translate(ref _startupDirectory);
             translator.TranslateDictionary(ref _buildProcessEnvironment, StringComparer.OrdinalIgnoreCase);
             translator.TranslateCulture(ref _culture);
             translator.TranslateCulture(ref _uiCulture);
-#if FEATURE_BINARY_SERIALIZATION && FEATURE_APPDOMAIN
+#if FEATURE_APPDOMAIN
             translator.TranslateDotNet(ref _appDomainSetup);
 #endif
             translator.Translate(ref _lineNumberOfTask);
@@ -373,7 +337,7 @@ namespace Microsoft.Build.BackEnd
         /// <summary>
         /// Factory for deserialization.
         /// </summary>
-        internal static INodePacket FactoryForDeserialization(INodePacketTranslator translator)
+        internal static INodePacket FactoryForDeserialization(ITranslator translator)
         {
             TaskHostConfiguration configuration = new TaskHostConfiguration();
             configuration.Translate(translator);

@@ -6,18 +6,13 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.Contracts;
-#if !SILVERLIGHT
 using System.Runtime.Serialization;
-#endif
 #if FEATURE_SECURITY_PERMISSIONS
 using System.Security.Permissions;
 #endif
 using System.Text;
 using System.Diagnostics.CodeAnalysis;
 using System.Security;
-#if SILVERLIGHT
-using System.Core; // for System.Core.SR
-#endif
 using Microsoft.Build.Shared;
 using Microsoft.Build.Internal;
 
@@ -86,20 +81,14 @@ namespace Microsoft.Build.Collections
     [DebuggerTypeProxy(typeof(Microsoft.Build.Collections.HashSetDebugView<>))]
     [DebuggerDisplay("Count = {Count}")]
     [SuppressMessage("Microsoft.Naming", "CA1710:IdentifiersShouldHaveCorrectSuffix", Justification = "By design")]
-#if SILVERLIGHT
-    public class HashSet<T> : ICollection<T>, ISet<T>
-#else
     [Serializable()]
 #if FEATURE_SECURITY_PERMISSIONS
     [System.Security.Permissions.HostProtection(MayLeakOnAbort = true)]
 #endif
     internal class RetrievableEntryHashSet<T> : ICollection<T>,
-#if FEATURE_BINARY_SERIALIZATION
         ISerializable, IDeserializationCallback,
-#endif
         IDictionary<string, T>
         where T : class, IKeyed
-#endif
     {
         // store lower 31 bits of hash code
         private const int Lower31BitMask = 0x7FFFFFFF;
@@ -112,33 +101,28 @@ namespace Microsoft.Build.Collections
         // This is set to 3 because capacity is acceptable as 2x rounded up to nearest prime.
         private const int ShrinkThreshold = 3;
 
-#if !SILVERLIGHT
         // constants for serialization
         private const String CapacityName = "Capacity";
         private const String ElementsName = "Elements";
         private const String ComparerName = "Comparer";
         private const String VersionName = "Version";
-#endif
 
         private int[] _buckets;
         private Slot[] _slots;
         private int _count;
         private int _lastIndex;
         private int _freeList;
-        private IEqualityComparer<IKeyed> _comparer;
+        private IEqualityComparer<string> _comparer;
+        private IConstrainedEqualityComparer<string> _constrainedComparer;
         private int _version;
         private bool _readOnly;
 
-#if !SILVERLIGHT
-#if FEATURE_BINARY_SERIALIZATION
         // temporary variable needed during deserialization
         private SerializationInfo _siInfo;
-#endif
-#endif
 
         #region Constructors
 
-        public RetrievableEntryHashSet(IEqualityComparer<IKeyed> comparer)
+        public RetrievableEntryHashSet(IEqualityComparer<string> comparer)
         {
             if (comparer == null)
             {
@@ -146,19 +130,20 @@ namespace Microsoft.Build.Collections
             }
 
             _comparer = comparer;
+            _constrainedComparer = comparer as IConstrainedEqualityComparer<string>;
             _lastIndex = 0;
             _count = 0;
             _freeList = -1;
             _version = 0;
         }
 
-        public RetrievableEntryHashSet(IEnumerable<T> collection, IEqualityComparer<IKeyed> comparer, bool readOnly = false)
+        public RetrievableEntryHashSet(IEnumerable<T> collection, IEqualityComparer<string> comparer, bool readOnly = false)
             : this(collection, comparer)
         {
             _readOnly = true; // Set after possible initialization from another collection
         }
 
-        public RetrievableEntryHashSet(IEnumerable<KeyValuePair<string, T>> collection, IEqualityComparer<IKeyed> comparer, bool readOnly = false)
+        public RetrievableEntryHashSet(IEnumerable<KeyValuePair<string, T>> collection, IEqualityComparer<string> comparer, bool readOnly = false)
             : this(collection.Values(), comparer, readOnly)
         {
             _readOnly = true; // Set after possible initialization from another collection
@@ -169,7 +154,7 @@ namespace Microsoft.Build.Collections
         /// Since resizes are relatively expensive (require rehashing), this attempts to minimize 
         /// the need to resize by setting the initial capacity based on size of collection. 
         /// </summary>
-        public RetrievableEntryHashSet(int suggestedCapacity, IEqualityComparer<IKeyed> comparer)
+        public RetrievableEntryHashSet(int suggestedCapacity, IEqualityComparer<string> comparer)
             : this(comparer)
         {
             Initialize(suggestedCapacity);
@@ -180,7 +165,7 @@ namespace Microsoft.Build.Collections
         /// Since resizes are relatively expensive (require rehashing), this attempts to minimize 
         /// the need to resize by setting the initial capacity based on size of collection. 
         /// </summary>
-        public RetrievableEntryHashSet(IEnumerable<T> collection, IEqualityComparer<IKeyed> comparer)
+        public RetrievableEntryHashSet(IEnumerable<T> collection, IEqualityComparer<string> comparer)
             : this(comparer)
         {
             if (collection == null)
@@ -209,8 +194,6 @@ namespace Microsoft.Build.Collections
             }
         }
 
-#if !SILVERLIGHT
-#if FEATURE_BINARY_SERIALIZATION
         protected RetrievableEntryHashSet(SerializationInfo info, StreamingContext context)
         {
             // We can't do anything with the keys and values until the entire graph has been 
@@ -219,8 +202,6 @@ namespace Microsoft.Build.Collections
             // OnDeserialization has been called.
             _siInfo = info;
         }
-#endif
-#endif
 
         #endregion
 
@@ -310,7 +291,7 @@ namespace Microsoft.Build.Collections
         bool ICollection<KeyValuePair<string, T>>.Contains(KeyValuePair<string, T> entry)
         {
             Debug.Assert(String.Equals(entry.Key, entry.Value.Key, StringComparison.Ordinal));
-            return (Get(entry.Value) != null);
+            return (Get(entry.Value.Key) != null);
         }
 
         public bool ContainsKey(string key)
@@ -348,23 +329,46 @@ namespace Microsoft.Build.Collections
         /// <returns>true if item contained; false if not</returns>
         public T Get(string key)
         {
-            return Get(new KeyedObject(key));
+            return GetCore(key, 0, key?.Length ?? 0);
+        }
+
+        /// <summary>
+        /// Gets the item if any with the given name
+        /// </summary>
+        /// <param name="key">key to check for containment</param>
+        /// <param name="index">The position of the substring within <paramref name="key"/>.</param>
+        /// <param name="length">The maximum number of characters in the <paramref name="key"/> to lookup.</param>
+        /// <returns>true if item contained; false if not</returns>
+        public T Get(string key, int index, int length)
+        {
+            if (length < 0)
+                throw new ArgumentOutOfRangeException("length");
+
+            if (index < 0 || index > (key == null ? 0 : key.Length) - length)
+                throw new ArgumentOutOfRangeException("index");
+
+            if (_constrainedComparer == null)
+                throw new InvalidOperationException("Cannot do a constrained lookup on this collection.");
+        
+            return GetCore(key, index, length);
         }
 
         /// <summary>
         /// Gets the item if any with the given name
         /// </summary>
         /// <param name="item">item to check for containment</param>
+        /// <param name="index">The position of the substring within <paramref name="item"/>.</param>
+        /// <param name="length">The maximum number of characters in the <paramref name="item"/> to lookup.</param>
         /// <returns>true if item contained; false if not</returns>
-        public T Get(IKeyed item)
+        private T GetCore(string item, int index, int length)
         {
             if (_buckets != null)
             {
-                int hashCode = InternalGetHashCode(item);
+                int hashCode = InternalGetHashCode(item, index, length);
                 // see note at "HashSet" level describing why "- 1" appears in for loop
                 for (int i = _buckets[hashCode % _buckets.Length] - 1; i >= 0; i = _slots[i].next)
                 {
-                    if (_slots[i].hashCode == hashCode && _comparer.Equals(_slots[i].value, item))
+                    if (_slots[i].hashCode == hashCode && _constrainedComparer != null ? _constrainedComparer.Equals(_slots[i].value.Key, item, index, length) : _comparer.Equals(_slots[i].value.Key, item))
                     {
                         return _slots[i].value;
                     }
@@ -385,19 +389,11 @@ namespace Microsoft.Build.Collections
         }
 
         /// <summary>
-        /// Remove by key
-        /// </summary>
-        public bool Remove(string item)
-        {
-            return Remove(new KeyedObject(item));
-        }
-
-        /// <summary>
         /// Remove entry that compares equal to T
         /// </summary>        
         public bool Remove(T item)
         {
-            return Remove((IKeyed)item);
+            return Remove(item.Key);
         }
 
         bool ICollection<KeyValuePair<string, T>>.Remove(KeyValuePair<string, T> entry)
@@ -411,7 +407,7 @@ namespace Microsoft.Build.Collections
         /// </summary>
         /// <param name="item">item to remove</param>
         /// <returns>true if removed; false if not (i.e. if the item wasn't in the HashSet)</returns>
-        private bool Remove(IKeyed item)
+        public bool Remove(string item)
         {
             if (_readOnly)
             {
@@ -425,7 +421,7 @@ namespace Microsoft.Build.Collections
                 int last = -1;
                 for (int i = _buckets[bucket] - 1; i >= 0; last = i, i = _slots[i].next)
                 {
-                    if (_slots[i].hashCode == hashCode && _comparer.Equals(_slots[i].value, item))
+                    if (_slots[i].hashCode == hashCode && _comparer.Equals(_slots[i].value.Key, item))
                     {
                         if (last < 0)
                         {
@@ -515,8 +511,6 @@ namespace Microsoft.Build.Collections
 
         #region ISerializable methods
 
-#if !SILVERLIGHT
-#if FEATURE_BINARY_SERIALIZATION
         // [SecurityPermissionAttribute(SecurityAction.LinkDemand, Flags = SecurityPermissionFlag.SerializationFormatter)]
         [SecurityCritical]
         public virtual void GetObjectData(SerializationInfo info, StreamingContext context)
@@ -528,7 +522,7 @@ namespace Microsoft.Build.Collections
 
             // need to serialize version to avoid problems with serializing while enumerating
             info.AddValue(VersionName, _version);
-            info.AddValue(ComparerName, _comparer, typeof(IEqualityComparer<T>));
+            info.AddValue(ComparerName, _comparer, typeof(IEqualityComparer<string>));
             info.AddValue(CapacityName, _buckets == null ? 0 : _buckets.Length);
             if (_buckets != null)
             {
@@ -537,14 +531,11 @@ namespace Microsoft.Build.Collections
                 info.AddValue(ElementsName, array, typeof(T[]));
             }
         }
-#endif
-#endif
+
         #endregion
 
         #region IDeserializationCallback methods
 
-#if !SILVERLIGHT
-#if FEATURE_BINARY_SERIALIZATION
         public virtual void OnDeserialization(Object sender)
         {
             if (_siInfo == null)
@@ -557,7 +548,8 @@ namespace Microsoft.Build.Collections
             }
 
             int capacity = _siInfo.GetInt32(CapacityName);
-            _comparer = (IEqualityComparer<IKeyed>)_siInfo.GetValue(ComparerName, typeof(IEqualityComparer<IKeyed>));
+            _comparer = (IEqualityComparer<string>)_siInfo.GetValue(ComparerName, typeof(IEqualityComparer<string>));
+            _constrainedComparer = _comparer as IConstrainedEqualityComparer<string>;
             _freeList = -1;
 
             if (capacity != 0)
@@ -586,8 +578,6 @@ namespace Microsoft.Build.Collections
             _version = _siInfo.GetInt32(VersionName);
             _siInfo = null;
         }
-#endif
-#endif
 
         #endregion
 
@@ -1077,7 +1067,7 @@ namespace Microsoft.Build.Collections
                                                                                                                                                         }
                                                                                                                                                         return numRemoved;
                                                                                                                                                     }
-#endif
+
         /// <summary>
         /// Gets the IEqualityComparer that is used to determine equality of keys for 
         /// the HashSet.
@@ -1089,7 +1079,7 @@ namespace Microsoft.Build.Collections
                 return _comparer;
             }
         }
-
+#endif
         /// <summary>
         /// Sets the capacity of this list to the size of the list (rounded up to nearest prime),
         /// unless count is 0, in which case we release references.
@@ -1233,16 +1223,16 @@ namespace Microsoft.Build.Collections
                 Initialize(0);
             }
 
-            int hashCode = InternalGetHashCode(value);
+            string key = value.Key;
+            int hashCode = InternalGetHashCode(key);
             int bucket = hashCode % _buckets.Length;
             for (int i = _buckets[hashCode % _buckets.Length] - 1; i >= 0; i = _slots[i].next)
             {
-                if (_slots[i].hashCode == hashCode && _comparer.Equals(_slots[i].value, value))
+                if (_slots[i].hashCode == hashCode && _comparer.Equals(_slots[i].value.Key, key))
                 {
                     // NOTE: this must add EVEN IF it is already present,
                     // as it may be a different object with the same name,
                     // and we want "last wins" semantics
-                    _slots[i].hashCode = hashCode;
                     _slots[i].value = value;
                     return false;
                 }
@@ -1708,12 +1698,22 @@ namespace Microsoft.Build.Collections
                                                                                                                                                                 return set1.Comparer.Equals(set2.Comparer);
         }
 #endif
+       
+        private int InternalGetHashCode(string item, int index, int length)
+        {
+            // No need to check for null 'item' as we own all comparers
+            if (_constrainedComparer != null)
+                return _constrainedComparer.GetHashCode(item, index, length) & Lower31BitMask;
+
+            return InternalGetHashCode(item);
+        }
+
         /// <summary>
         /// Workaround Comparers that throw ArgumentNullException for GetHashCode(null).
         /// </summary>
         /// <param name="item"></param>
         /// <returns>hash code</returns>
-        private int InternalGetHashCode(IKeyed item)
+        private int InternalGetHashCode(string item)
         {
             if (item == null)
             {
@@ -1814,30 +1814,6 @@ namespace Microsoft.Build.Collections
 
                 _index = 0;
                 _current = default(T);
-            }
-        }
-
-        /// <summary>
-        /// Wrapper is necessary because String doesn't implement IKeyed
-        /// </summary>
-        private struct KeyedObject : IKeyed
-        {
-            private string _name;
-
-            internal KeyedObject(string name)
-            {
-                _name = name;
-            }
-
-            string IKeyed.Key
-            {
-                get { return _name; }
-            }
-
-            public override int GetHashCode()
-            {
-                ErrorUtilities.ThrowInternalError("should be using comparer");
-                return -1;
             }
         }
     }

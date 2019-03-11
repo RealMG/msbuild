@@ -2,46 +2,83 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
+using Microsoft.Build.UnitTests;
 using Microsoft.Build.Shared;
 using Microsoft.Build.UnitTests.Shared;
+using Shouldly;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Microsoft.Build.UnitTests
 {
     public sealed class PortableTasks_Tests
     {
-        private static readonly string ProjectFilePath = Path.Combine(BuildEnvironmentHelper.Instance.CurrentMSBuildToolsDirectory, "portableTaskTest.proj");
+        private readonly ITestOutputHelper _outputHelper;
+
+        private static readonly string PortableTaskFolderPath = Path.GetFullPath(
+            Path.Combine(BuildEnvironmentHelper.Instance.CurrentMSBuildToolsDirectory,
+                        "..", "..", "..", "Samples", "PortableTask"));
+
+        private const string ProjectFileName = "portableTaskTest.proj";
+
+        public PortableTasks_Tests(ITestOutputHelper outputHelper)
+        {
+            _outputHelper = outputHelper;
+        }
 
         [Fact]
-        [PlatformSpecific(PlatformID.Windows)]
-        public static void TestDesktopMSBuildShouldRunPortableTask()
+        [PlatformSpecific(TestPlatforms.Windows)]
+        [SkipOnTargetFramework(TargetFrameworkMonikers.Netcoreapp, "No Visual Studio install for netcore")]
+        public void TestDesktopMSBuildShouldRunPortableTask()
         {
             RunMSBuildOnProjectWithPortableTaskAndAssertOutput(true);
         }
 
         [Fact]
-        public static void TestNonDesktopMSBuildShouldRunPortableTask()
+        public void TestNonDesktopMSBuildShouldRunPortableTask()
         {
             RunMSBuildOnProjectWithPortableTaskAndAssertOutput(false);
         }
 
-        private static void RunMSBuildOnProjectWithPortableTaskAndAssertOutput(bool useDesktopMSBuild)
+        private void RunMSBuildOnProjectWithPortableTaskAndAssertOutput(bool useDesktopMSBuild)
         {
-            bool successfulExit;
-            string executionOutput;
-            
-            Assert.True(File.Exists(ProjectFilePath), $"Project file {ProjectFilePath} does not exist");
+            using (TestEnvironment env = TestEnvironment.Create(_outputHelper))
+            {
+                bool successfulExit;
 
-            executionOutput = useDesktopMSBuild ? 
-                RunnerUtilities.RunProcessAndGetOutput("msbuild", ProjectFilePath, out successfulExit, shellExecute: true) : 
-                RunnerUtilities.ExecMSBuild(ProjectFilePath, out successfulExit);
-            
-            Assert.True(successfulExit, $"{(useDesktopMSBuild ? "Desktop MSBuild" : "Non Desktop MSBuild")} failed to execute the portable task");
+                var folder = env.CreateFolder().Path;
+                var projFile = Path.Combine(folder, ProjectFileName);
 
-            var matches = Regex.Matches(executionOutput, @"Microsoft\.Build\.(\w+\.)+dll");
+                //"Debug", "netstandard1.3"
+                DirectoryInfo ProjectFileFolder =
+                    new DirectoryInfo(PortableTaskFolderPath).EnumerateDirectories().First().EnumerateDirectories().First();
 
-            Assert.True(matches.Count > 1);
+                foreach (var file in ProjectFileFolder.GetFiles())
+                {
+                    File.Copy(file.FullName, Path.Combine(folder, file.Name));
+                    _outputHelper.WriteLine($"Copied {file.FullName} to {Path.Combine(folder, file.Name)}");
+                }
+
+                File.Exists(projFile).ShouldBeTrue($"Project file {projFile} does not exist");
+
+                _outputHelper.WriteLine(File.ReadAllText(projFile));
+
+                _outputHelper.WriteLine($"Building project {projFile}");
+
+                var executionOutput = useDesktopMSBuild
+                    ? RunnerUtilities.RunProcessAndGetOutput("msbuild", projFile, out successfulExit,
+                        shellExecute: true, outputHelper: _outputHelper)
+                    : RunnerUtilities.ExecMSBuild(projFile, out successfulExit);
+
+                _outputHelper.WriteLine(executionOutput);
+
+                successfulExit.ShouldBeTrue(
+                    $"{(useDesktopMSBuild ? "Desktop MSBuild" : "Non Desktop MSBuild")} failed to execute the portable task");
+
+                Regex.Matches(executionOutput, @"Microsoft\.Build\.(\w+\.)+dll").Count.ShouldBeGreaterThan(1);
+            }
         }
     }
 }

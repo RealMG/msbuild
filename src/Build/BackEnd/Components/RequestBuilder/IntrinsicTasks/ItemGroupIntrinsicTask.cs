@@ -1,12 +1,10 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Implementation of the ItemGroup intrinsic task.</summary>
-//-----------------------------------------------------------------------
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Text;
 using System.Linq;
 using Microsoft.Build.Collections;
@@ -15,7 +13,7 @@ using Microsoft.Build.Execution;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
 using Microsoft.Build.Evaluation;
-
+using Microsoft.Build.Shared.FileSystem;
 using TaskItem = Microsoft.Build.Execution.ProjectItemInstance.TaskItem;
 using ProjectItemInstanceFactory = Microsoft.Build.Execution.ProjectItemInstance.TaskItem.ProjectItemInstanceFactory;
 using EngineFileUtilities = Microsoft.Build.Internal.EngineFileUtilities;
@@ -33,6 +31,8 @@ namespace Microsoft.Build.BackEnd
         /// </summary>
         private ProjectItemGroupTaskInstance _taskInstance;
 
+        private EngineFileUtilities _engineFileUtilities;
+
         /// <summary>
         /// Instantiates an ItemGroup task
         /// </summary>
@@ -44,6 +44,7 @@ namespace Microsoft.Build.BackEnd
             : base(loggingContext, projectInstance, logTaskInputs)
         {
             _taskInstance = taskInstance;
+            _engineFileUtilities = EngineFileUtilities.Default;
         }
 
         /// <summary>
@@ -74,8 +75,8 @@ namespace Microsoft.Build.BackEnd
                             Project.Directory,
                             child.ConditionLocation,
                             LoggingContext.LoggingService,
-                            LoggingContext.BuildEventContext
-                            );
+                            LoggingContext.BuildEventContext,
+                            FileSystems.Default);
 
                         if (condition)
                         {
@@ -83,7 +84,7 @@ namespace Microsoft.Build.BackEnd
                             HashSet<string> removeMetadata = null;
                             if (!String.IsNullOrEmpty(child.KeepMetadata))
                             {
-                                var keepMetadataEvaluated = bucket.Expander.ExpandIntoStringListLeaveEscaped(child.KeepMetadata, ExpanderOptions.ExpandAll, child.KeepMetadataLocation);
+                                var keepMetadataEvaluated = bucket.Expander.ExpandIntoStringListLeaveEscaped(child.KeepMetadata, ExpanderOptions.ExpandAll, child.KeepMetadataLocation).ToList();
                                 if (keepMetadataEvaluated.Count > 0)
                                 {
                                     keepMetadata = new HashSet<string>(keepMetadataEvaluated);
@@ -92,7 +93,7 @@ namespace Microsoft.Build.BackEnd
 
                             if (!String.IsNullOrEmpty(child.RemoveMetadata))
                             {
-                                var removeMetadataEvaluated = bucket.Expander.ExpandIntoStringListLeaveEscaped(child.RemoveMetadata, ExpanderOptions.ExpandAll, child.RemoveMetadataLocation);
+                                var removeMetadataEvaluated = bucket.Expander.ExpandIntoStringListLeaveEscaped(child.RemoveMetadata, ExpanderOptions.ExpandAll, child.RemoveMetadataLocation).ToList();
                                 if (removeMetadataEvaluated.Count > 0)
                                 {
                                     removeMetadata = new HashSet<string>(removeMetadataEvaluated);
@@ -167,8 +168,8 @@ namespace Microsoft.Build.BackEnd
                     Project.Directory,
                     metadataInstance.Location,
                     LoggingContext.LoggingService,
-                    LoggingContext.BuildEventContext
-                    );
+                    LoggingContext.BuildEventContext,
+                    FileSystems.Default);
 
                 if (condition)
                 {
@@ -196,8 +197,8 @@ namespace Microsoft.Build.BackEnd
                 Project.Directory,
                 child.KeepDuplicatesLocation,
                 LoggingContext.LoggingService,
-                LoggingContext.BuildEventContext
-                );
+                LoggingContext.BuildEventContext,
+                FileSystems.Default);
 
             if (LogTaskInputs && !LoggingContext.LoggingService.OnlyLogCriticalEvents && itemsToAdd != null && itemsToAdd.Count > 0)
             {
@@ -285,8 +286,8 @@ namespace Microsoft.Build.BackEnd
                     Project.Directory,
                     metadataInstance.ConditionLocation,
                     LoggingContext.LoggingService,
-                    LoggingContext.BuildEventContext
-                    );
+                    LoggingContext.BuildEventContext,
+                    FileSystems.Default);
 
                 if (condition)
                 {
@@ -340,80 +341,108 @@ namespace Microsoft.Build.BackEnd
             ISet<string> removeMetadata
         )
         {
+            //todo this is duplicated logic with the item computation logic from evaluation (in LazyIncludeOperation.SelectItems)
+
             ProjectErrorUtilities.VerifyThrowInvalidProject(!(keepMetadata != null && removeMetadata != null), originalItem.KeepMetadataLocation, "KeepAndRemoveMetadataMutuallyExclusive");
             IList<ProjectItemInstance> items = new List<ProjectItemInstance>();
 
-            // UNDONE: (Refactor)  This code also exists in largely the same form in Evaluator.CreateItemsFromInclude.
-            // STEP 1: Expand properties and metadata in Include
+            // Expand properties and metadata in Include
             string evaluatedInclude = expander.ExpandIntoStringLeaveEscaped(originalItem.Include, ExpanderOptions.ExpandPropertiesAndMetadata, originalItem.IncludeLocation);
 
-            // STEP 2: Split Include on any semicolons, and take each split in turn
-            if (evaluatedInclude.Length > 0)
+            if (evaluatedInclude.Length == 0)
             {
-                IList<string> includeSplits = ExpressionShredder.SplitSemiColonSeparatedList(evaluatedInclude);
-                ProjectItemInstanceFactory itemFactory = new ProjectItemInstanceFactory(this.Project, originalItem.ItemType);
+                return items;
+            }
 
-                foreach (string includeSplit in includeSplits)
+            // Compute exclude fragments, without expanding wildcards
+            var excludes = ImmutableList<string>.Empty.ToBuilder();
+            if (originalItem.Exclude.Length > 0)
+            {
+                string evaluatedExclude = expander.ExpandIntoStringLeaveEscaped(originalItem.Exclude, ExpanderOptions.ExpandAll, originalItem.ExcludeLocation);
+
+                if (evaluatedExclude.Length > 0)
                 {
-                    // STEP 3: If expression is "@(x)" copy specified list with its metadata, otherwise just treat as string
-                    bool throwaway;
+                    var excludeSplits = ExpressionShredder.SplitSemiColonSeparatedList(evaluatedExclude);
 
-                    IList<ProjectItemInstance> itemsFromSplit = expander.ExpandSingleItemVectorExpressionIntoItems(includeSplit, itemFactory, ExpanderOptions.ExpandItems, false /* do not include null expansion results */, out throwaway, originalItem.IncludeLocation);
-
-                    if (itemsFromSplit != null)
+                    foreach (string excludeSplit in excludeSplits)
                     {
-                        // Expression is in form "@(X)", so add these items directly.
-                        foreach (ProjectItemInstance item in itemsFromSplit)
-                        {
-                            items.Add(item);
-                        }
-                    }
-                    else
-                    {
-                        // The expression is not of the form "@(X)". Treat as string
-                        string[] includeSplitFiles = EngineFileUtilities.GetFileListEscaped(Project.Directory, includeSplit);
-
-                        foreach (string includeSplitFile in includeSplitFiles)
-                        {
-                            items.Add(new ProjectItemInstance(Project, originalItem.ItemType, includeSplitFile, includeSplit /* before wildcard expansion */, null, null, originalItem.Location.File));
-                        }
-                    }
-                }
-
-                // STEP 4: Evaluate, split, expand and subtract any Exclude
-                if (originalItem.Exclude.Length > 0)
-                {
-                    string evaluatedExclude = expander.ExpandIntoStringLeaveEscaped(originalItem.Exclude, ExpanderOptions.ExpandAll, originalItem.ExcludeLocation);
-
-                    if (evaluatedExclude.Length > 0)
-                    {
-                        IList<string> excludeSplits = ExpressionShredder.SplitSemiColonSeparatedList(evaluatedExclude);
-                        HashSet<string> excludesUnescapedForComparison = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-                        foreach (string excludeSplit in excludeSplits)
-                        {
-                            string[] excludeSplitFiles = EngineFileUtilities.GetFileListUnescaped(Project.Directory, excludeSplit);
-
-                            foreach (string excludeSplitFile in excludeSplitFiles)
-                            {
-                                excludesUnescapedForComparison.Add(excludeSplitFile);
-                            }
-                        }
-
-                        List<ProjectItemInstance> remainingItems = new List<ProjectItemInstance>();
-
-                        for (int i = 0; i < items.Count; i++)
-                        {
-                            if (!excludesUnescapedForComparison.Contains(((IItem)items[i]).EvaluatedInclude))
-                            {
-                                remainingItems.Add(items[i]);
-                            }
-                        }
-
-                        items = remainingItems;
+                        excludes.Add(excludeSplit);
                     }
                 }
             }
+
+            // Split Include on any semicolons, and take each split in turn
+            var includeSplits = ExpressionShredder.SplitSemiColonSeparatedList(evaluatedInclude);
+            ProjectItemInstanceFactory itemFactory = new ProjectItemInstanceFactory(this.Project, originalItem.ItemType);
+
+            foreach (string includeSplit in includeSplits)
+            {
+                // If expression is "@(x)" copy specified list with its metadata, otherwise just treat as string
+                bool throwaway;
+
+                IList<ProjectItemInstance> itemsFromSplit = expander.ExpandSingleItemVectorExpressionIntoItems(includeSplit,
+                    itemFactory,
+                    ExpanderOptions.ExpandItems,
+                    false /* do not include null expansion results */,
+                    out throwaway,
+                    originalItem.IncludeLocation);
+
+                if (itemsFromSplit != null)
+                {
+                    // Expression is in form "@(X)", so add these items directly.
+                    foreach (ProjectItemInstance item in itemsFromSplit)
+                    {
+                        items.Add(item);
+                    }
+                }
+                else
+                {
+                    // The expression is not of the form "@(X)". Treat as string
+
+                    // Pass the non wildcard expanded excludes here to fix https://github.com/Microsoft/msbuild/issues/2621
+                    string[] includeSplitFiles = _engineFileUtilities.GetFileListEscaped(
+                        Project.Directory,
+                        includeSplit,
+                        excludes);
+
+                    foreach (string includeSplitFile in includeSplitFiles)
+                    {
+                        items.Add(new ProjectItemInstance(
+                            Project,
+                            originalItem.ItemType,
+                            includeSplitFile,
+                            includeSplit /* before wildcard expansion */,
+                            null,
+                            null,
+                            originalItem.Location.File));
+                    }
+                }
+            }
+
+            // Evaluate, split, expand and subtract any Exclude
+            HashSet<string> excludesUnescapedForComparison = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string excludeSplit in excludes)
+            {
+                string[] excludeSplitFiles = _engineFileUtilities.GetFileListUnescaped(Project.Directory, excludeSplit);
+
+                foreach (string excludeSplitFile in excludeSplitFiles)
+                {
+                    excludesUnescapedForComparison.Add(excludeSplitFile);
+                }
+            }
+
+            List<ProjectItemInstance> remainingItems = new List<ProjectItemInstance>();
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                if (!excludesUnescapedForComparison.Contains(((IItem)items[i]).EvaluatedInclude))
+                {
+                    remainingItems.Add(items[i]);
+                }
+            }
+
+            items = remainingItems;
 
             // Filter the metadata as appropriate
             if (keepMetadata != null)
@@ -469,7 +498,7 @@ namespace Microsoft.Build.BackEnd
             HashSet<string> specificationsToFind = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // Split by semicolons
-            IList<string> specificationPieces = expander.ExpandIntoStringListLeaveEscaped(specification, ExpanderOptions.ExpandAll, specificationLocation);
+            var specificationPieces = expander.ExpandIntoStringListLeaveEscaped(specification, ExpanderOptions.ExpandAll, specificationLocation);
 
             foreach (string piece in specificationPieces)
             {
@@ -480,7 +509,7 @@ namespace Microsoft.Build.BackEnd
                 // Don't unescape wildcards just yet - if there were any escaped, the caller wants to treat them
                 // as literals. Everything else is safe to unescape at this point, since we're only matching
                 // against the file system.
-                string[] fileList = EngineFileUtilities.GetFileListEscaped(Project.Directory, piece);
+                string[] fileList = _engineFileUtilities.GetFileListEscaped(Project.Directory, piece);
 
                 foreach (string file in fileList)
                 {

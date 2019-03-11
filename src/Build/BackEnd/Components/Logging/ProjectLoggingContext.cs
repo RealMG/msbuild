@@ -1,9 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>A logging context for projects.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
@@ -129,7 +125,7 @@ namespace Microsoft.Build.BackEnd.Logging
                 configurationId,
                 parentBuildEventContext,
                 projectFullPath,
-                String.Join(";", targets.ToArray()),
+                String.Join(";", targets),
                 properties,
                 items
                 );
@@ -163,10 +159,10 @@ namespace Microsoft.Build.BackEnd.Logging
         /// <summary>
         /// Log that a target has started
         /// </summary>
-        internal TargetLoggingContext LogTargetBatchStarted(string projectFullPath, ProjectTargetInstance target, string parentTargetName)
+        internal TargetLoggingContext LogTargetBatchStarted(string projectFullPath, ProjectTargetInstance target, string parentTargetName, TargetBuiltReason buildReason)
         {
             ErrorUtilities.VerifyThrow(this.IsValid, "invalid");
-            return new TargetLoggingContext(this, projectFullPath, target, parentTargetName);
+            return new TargetLoggingContext(this, projectFullPath, target, parentTargetName, buildReason);
         }
 
         /// <summary>

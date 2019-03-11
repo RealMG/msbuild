@@ -7,7 +7,7 @@ using Xunit;
 
 namespace Microsoft.Build.UnitTests
 {
-    [PlatformSpecific(Xunit.PlatformID.AnyUnix)]
+    [PlatformSpecific(TestPlatforms.AnyUnix)]
     public  class FixPathOnUnixTests
     {
         [Fact]
@@ -34,7 +34,7 @@ namespace Microsoft.Build.UnitTests
                 </Project>";
 
             string buildProjectPath = ObjectModelHelpers.CreateFileInTempProjectDirectory("build.proj", buildProjectContents);
-            string mainProjectPath = ObjectModelHelpers.CreateFileInTempProjectDirectory("projectDirectory/main.proj", mainProjectContents);
+            ObjectModelHelpers.CreateFileInTempProjectDirectory("projectDirectory/main.proj", mainProjectContents);
             ObjectModelHelpers.CreateFileInTempProjectDirectory(Path.Combine("projectDirectory", "lib", "foo.dll"), "just a text file");
 
             var projColln = new ProjectCollection();

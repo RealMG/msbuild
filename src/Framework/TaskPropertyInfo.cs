@@ -1,9 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Stores the parameter information which will be passed to inline tasks to use as a set of parameters to create</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Reflection;
@@ -13,9 +9,7 @@ namespace Microsoft.Build.Framework
     /// <summary>
     /// Class which represents the parameter information from the using task as a strongly typed class.
     /// </summary>
-#if FEATURE_BINARY_SERIALIZATION
     [Serializable]
-#endif
     public class TaskPropertyInfo
     {
         /// <summary>

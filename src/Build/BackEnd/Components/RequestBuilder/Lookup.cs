@@ -2,15 +2,11 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Text;
 using System.Linq;
 using Microsoft.Build.Shared;
-using System.Diagnostics;
 using System.Threading;
 using Microsoft.Build.Evaluation;
-using Microsoft.Build.Framework;
 using Microsoft.Build.Execution;
 using Microsoft.Build.Collections;
 
@@ -56,7 +52,7 @@ namespace Microsoft.Build.BackEnd
     /// 
     /// For sensible semantics, only the current primary scope can be modified at any point.
     /// </summary>
-    internal class Lookup
+    internal class Lookup : IPropertyProvider<ProjectPropertyInstance>, IItemProvider<ProjectItemInstance>
     {
         #region Fields
 
@@ -84,35 +80,20 @@ namespace Microsoft.Build.BackEnd
         /// </summary>
         private Dictionary<ProjectItemInstance, ProjectItemInstance> _cloneTable;
 
-        /// <summary>
-        /// Read-only wrapper around this lookup.
-        /// </summary>
-        private ReadOnlyLookup _readOnlyLookup;
-
-        /// <summary>
-        /// A dictionary of named values for debugger display only. If 
-        /// not debugging, this should be null.
-        /// </summary>
-        private IDictionary<string, object> _globalsForDebugging;
-
         #endregion
 
         #region Constructors
 
         /// <summary>
         /// Construct a lookup over specified items and properties.
-        /// Accept a dictionary of named values for debugger display only. If 
-        /// not debugging, this should be null.
         /// </summary>
-        internal Lookup(ItemDictionary<ProjectItemInstance> projectItems, PropertyDictionary<ProjectPropertyInstance> properties, IDictionary<string, object> globalsForDebugging)
+        internal Lookup(ItemDictionary<ProjectItemInstance> projectItems, PropertyDictionary<ProjectPropertyInstance> properties)
         {
             ErrorUtilities.VerifyThrowInternalNull(projectItems, "projectItems");
             ErrorUtilities.VerifyThrowInternalNull(properties, "properties");
 
             Lookup.Scope scope = new Lookup.Scope(this, "Lookup()", projectItems, properties);
             _lookupScopes.AddFirst(scope);
-
-            _globalsForDebugging = globalsForDebugging;
         }
 
         /// <summary>
@@ -129,28 +110,11 @@ namespace Microsoft.Build.BackEnd
             // Clones need to share an (item)clone table; the batching engine asks for items from the lookup,
             // then populates buckets with them, which have clone lookups.
             _cloneTable = that._cloneTable;
-
-            _globalsForDebugging = that._globalsForDebugging;
         }
 
         #endregion
 
         #region Properties
-
-        /// <summary>
-        /// Returns a read-only wrapper around this lookup
-        /// </summary>
-        internal ReadOnlyLookup ReadOnlyLookup
-        {
-            get
-            {
-                if (_readOnlyLookup == null)
-                {
-                    _readOnlyLookup = new ReadOnlyLookup(this);
-                }
-                return _readOnlyLookup;
-            }
-        }
 
         // Convenience private properties
         // "Primary" is the "top" or "innermost" scope
@@ -221,15 +185,6 @@ namespace Microsoft.Build.BackEnd
             set { _lookupScopes.First.Next.Value.PropertySets = value; }
         }
 
-        /// <summary>
-        /// A dictionary of named values for debugger display only. If 
-        /// not debugging, this should be null.
-        /// </summary>
-        internal IDictionary<string, object> GlobalsForDebugging
-        {
-            get { return _globalsForDebugging; }
-        }
-
         #endregion
 
         #region Internal Methods
@@ -261,7 +216,7 @@ namespace Microsoft.Build.BackEnd
                         {
                             errorMessages = new List<string>();
                         }
-                        errorMessages.Add(ResourceUtilities.FormatResourceString("PropertyOutputOverridden", propertyName, EscapingUtilities.UnescapeAll(lookupHash[propertyName]), property.EvaluatedValue));
+                        errorMessages.Add(ResourceUtilities.FormatResourceStringIgnoreCodeAndKeyword("PropertyOutputOverridden", propertyName, EscapingUtilities.UnescapeAll(lookupHash[propertyName]), property.EvaluatedValue));
                     }
 
                     // Set the value of the hash to the new property value
@@ -455,7 +410,7 @@ namespace Microsoft.Build.BackEnd
         /// If no match is found, returns null.
         /// Caller must not modify the property returned.
         /// </summary>
-        internal ProjectPropertyInstance GetProperty(string name, int startIndex, int endIndex)
+        public ProjectPropertyInstance GetProperty(string name, int startIndex, int endIndex)
         {
             // Walk down the tables and stop when the first 
             // property with this name is found
@@ -493,7 +448,7 @@ namespace Microsoft.Build.BackEnd
         /// If no match is found, returns null.
         /// Caller must not modify the property returned.
         /// </summary>
-        internal ProjectPropertyInstance GetProperty(string name)
+        public ProjectPropertyInstance GetProperty(string name)
         {
             ErrorUtilities.VerifyThrowInternalLength(name, "name");
 
@@ -505,13 +460,14 @@ namespace Microsoft.Build.BackEnd
         /// If no match is found, returns an empty list.
         /// Caller must not modify the group returned.
         /// </summary>
-        internal ICollection<ProjectItemInstance> GetItems(string itemType)
+        public ICollection<ProjectItemInstance> GetItems(string itemType)
         {
             // The visible items consist of the adds (accumulated as we go down)
             // plus the first set of regular items we encounter
             // minus any removes
-            ItemDictionary<ProjectItemInstance> allAdds = null;
-            ItemDictionary<ProjectItemInstance> allRemoves = null;
+
+            List<ProjectItemInstance> allAdds = null;
+            List<ProjectItemInstance> allRemoves = null;
             Dictionary<ProjectItemInstance, MetadataModifications> allModifies = null;
             ICollection<ProjectItemInstance> groupFound = null;
 
@@ -523,8 +479,8 @@ namespace Microsoft.Build.BackEnd
                     ICollection<ProjectItemInstance> adds = scope.Adds[itemType];
                     if (adds.Count != 0)
                     {
-                        allAdds = allAdds ?? new ItemDictionary<ProjectItemInstance>();
-                        allAdds.ImportItemsOfType(itemType, adds);
+                        allAdds = allAdds ?? new List<ProjectItemInstance>(adds.Count);
+                        allAdds.AddRange(adds);
                     }
                 }
 
@@ -534,8 +490,8 @@ namespace Microsoft.Build.BackEnd
                     ICollection<ProjectItemInstance> removes = scope.Removes[itemType];
                     if (removes.Count != 0)
                     {
-                        allRemoves = allRemoves ?? new ItemDictionary<ProjectItemInstance>();
-                        allRemoves.ImportItems(removes);
+                        allRemoves = allRemoves ?? new List<ProjectItemInstance>(removes.Count);
+                        allRemoves.AddRange(removes);
                     }
                 }
 
@@ -547,7 +503,7 @@ namespace Microsoft.Build.BackEnd
                     {
                         if (modifies.Count != 0)
                         {
-                            allModifies = allModifies ?? new Dictionary<ProjectItemInstance, MetadataModifications>();
+                            allModifies = allModifies ?? new Dictionary<ProjectItemInstance, MetadataModifications>(modifies.Count);
 
                             // We already have some modifies for this type
                             foreach (KeyValuePair<ProjectItemInstance, MetadataModifications> modify in modifies)
@@ -587,11 +543,19 @@ namespace Microsoft.Build.BackEnd
                 return groupFound;
             }
 
+            // Set the initial sizes to avoid resizing during import
+            int itemsTypesCount = 1;    // We're only ever importing a single item type
+            int itemsCount = groupFound?.Count ?? 0;    // Start with initial set
+            itemsCount += allAdds?.Count ?? 0;          // Add all the additions
+            itemsCount -= allRemoves?.Count ?? 0;       // Remove the removals
+            if (itemsCount < 0)
+                itemsCount = 0;
+
             // We have adds and/or removes and/or modifies to incorporate.
             // We can't modify the group, because that might
             // be visible to other batches; we have to create
             // a new one.
-            ItemDictionary<ProjectItemInstance> result = new ItemDictionary<ProjectItemInstance>();
+            ItemDictionary<ProjectItemInstance> result = new ItemDictionary<ProjectItemInstance>(itemsTypesCount, itemsCount);
 
             if (groupFound != null)
             {
@@ -1048,7 +1012,7 @@ namespace Microsoft.Build.BackEnd
             /// <summary>
             /// A set of explicitly-specified modifications.
             /// </summary>
-            private HybridDictionary<string, MetadataModification> _modifications;
+            private Dictionary<string, MetadataModification> _modifications;
 
             /// <summary>
             /// Constructor.
@@ -1058,7 +1022,7 @@ namespace Microsoft.Build.BackEnd
             public MetadataModifications(bool keepOnlySpecified)
             {
                 _keepOnlySpecified = keepOnlySpecified;
-                _modifications = new HybridDictionary<string, MetadataModification>(MSBuildNameIgnoreCaseComparer.Default);
+                _modifications = new Dictionary<string, MetadataModification>(MSBuildNameIgnoreCaseComparer.Default);
             }
 
             /// <summary>
@@ -1068,7 +1032,7 @@ namespace Microsoft.Build.BackEnd
             private MetadataModifications(MetadataModifications other)
             {
                 _keepOnlySpecified = other._keepOnlySpecified;
-                _modifications = new HybridDictionary<string, MetadataModification>(other._modifications, MSBuildNameIgnoreCaseComparer.Default);
+                _modifications = new Dictionary<string, MetadataModification>(other._modifications, MSBuildNameIgnoreCaseComparer.Default);
             }
 
             /// <summary>
@@ -1475,39 +1439,5 @@ namespace Microsoft.Build.BackEnd
                 _owningLookup.LeaveScope(this);
             }
         }
-    }
-
-    #region Related Types
-
-    /// <summary>
-    /// Read-only wrapper around a lookup.
-    /// Passed to Expander and ItemExpander, which only need to
-    /// use a lookup in a read-only fashion, thus increasing 
-    /// encapsulation of the data in the Lookup.
-    /// </summary>
-    internal class ReadOnlyLookup : IPropertyProvider<ProjectPropertyInstance>, IItemProvider<ProjectItemInstance>
-    {
-        private Lookup _lookup;
-
-        internal ReadOnlyLookup(Lookup lookup)
-        {
-            _lookup = lookup;
-        }
-
-        public ICollection<ProjectItemInstance> GetItems(string itemType)
-        {
-            return _lookup.GetItems(itemType);
-        }
-
-        public ProjectPropertyInstance GetProperty(string name)
-        {
-            return _lookup.GetProperty(name);
-        }
-
-        public ProjectPropertyInstance GetProperty(string name, int startIndex, int endIndex)
-        {
-            return _lookup.GetProperty(name, startIndex, endIndex);
-        }
-        #endregion
     }
 }

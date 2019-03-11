@@ -38,12 +38,19 @@ namespace Microsoft.Build.UnitTests.BackEnd
         private IRequestBuilder _requestBuilder;
         private int _nodeRequestId;
 
+        private string _originalWorkingDirectory;
+
+        #pragma warning disable xUnit1013
+
         public void LoggingException(Exception e)
         {
         }
 
+        #pragma warning restore xUnit1013
+
         public RequestBuilder_Tests()
         {
+            _originalWorkingDirectory = Directory.GetCurrentDirectory();
             _nodeRequestId = 1;
             _host = new MockHost();
             _host.RequestBuilder = new RequestBuilder();
@@ -63,6 +70,11 @@ namespace Microsoft.Build.UnitTests.BackEnd
         {
             ((IBuildComponent)_requestBuilder).ShutdownComponent();
             _host = null;
+
+            // Normally, RequestBuilder ensures that this gets reset before completing
+            // requests, but we call it in odd ways here so restore it manually
+            // to keep the overall test invariant happy.
+            Directory.SetCurrentDirectory(_originalWorkingDirectory);
         }
 
         [Fact]
@@ -83,6 +95,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
                 targetBuilder.SetResultsToReturn(result);
 
                 _requestBuilder.BuildRequest(GetNodeLoggingContext(), entry);
+
                 WaitForEvent(_buildRequestCompletedEvent, "Build Request Completed");
                 Assert.Equal(BuildRequestEntryState.Complete, entry.State);
                 Assert.Equal(entry, _buildRequestCompleted_Entry);
@@ -110,6 +123,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
                 BuildResult result = new BuildResult(request);
                 result.AddResultsForTarget("target1", GetEmptySuccessfulTargetResult());
                 targetBuilder.SetResultsToReturn(result);
+
                 _requestBuilder.BuildRequest(GetNodeLoggingContext(), entry);
 
                 Thread.Sleep(500);
@@ -355,7 +369,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
                 BuildResult result = new BuildResult(entry.Request);
                 foreach (string target in targets)
                 {
-                    result.AddResultsForTarget(target, TestUtilities.GetEmptyFailingTargetResult());
+                    result.AddResultsForTarget(target, BuildResultUtilities.GetEmptyFailingTargetResult());
                 }
                 return Task<BuildResult>.FromResult(result);
             }
@@ -380,7 +394,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
                     BuildResult result = new BuildResult(entry.Request);
                     foreach (string target in targets)
                     {
-                        result.AddResultsForTarget(target, TestUtilities.GetEmptyFailingTargetResult());
+                        result.AddResultsForTarget(target, BuildResultUtilities.GetEmptyFailingTargetResult());
                     }
                     return Task<BuildResult>.FromResult(result);
                 }

@@ -1,9 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Event args for critical build message event.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
@@ -22,9 +18,7 @@ namespace Microsoft.Build.Framework
     /// without following certain special FX guidelines, can break both
     /// forward and backward compatibility
     /// </remarks>
-#if FEATURE_BINARY_SERIALIZATION
     [Serializable]
-#endif
     public class CriticalBuildMessageEventArgs : BuildMessageEventArgs
     {
         /// <summary>

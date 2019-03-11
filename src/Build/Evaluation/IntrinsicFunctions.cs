@@ -1,9 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Definition of functions which can be accessed from MSBuild files.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
@@ -15,6 +11,7 @@ using System.Text.RegularExpressions;
 
 using Microsoft.Build.Internal;
 using Microsoft.Build.Shared;
+using Microsoft.Build.Shared.FileSystem;
 using Microsoft.Win32;
 
 // Needed for DoesTaskHostExistForParameters
@@ -28,13 +25,11 @@ namespace Microsoft.Build.Evaluation
     /// </summary>
     internal static class IntrinsicFunctions
     {
-        private static Lazy<string> _validOsPlatforms = new Lazy<string>(
-            () => typeof(OSPlatform).GetTypeInfo()
-                .GetProperties(BindingFlags.Static | BindingFlags.Public)
-                .Where(pi => pi.PropertyType == typeof(OSPlatform))
-                .Select(pi => pi.Name)
-                .Aggregate("", (a, b) => string.IsNullOrEmpty(a) ? b : $"{a}, {b}"),
-            true);
+#if FEATURE_WIN32_REGISTRY
+        private static readonly object[] DefaultRegistryViews = new object[] { RegistryView.Default };
+
+        private static readonly Lazy<Regex> RegistrySdkRegex = new Lazy<Regex>(() => new Regex(@"^HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Microsoft SDKs\\Windows\\v(\d+\.\d+)$", RegexOptions.IgnoreCase));
+#endif // FEATURE_WIN32_REGISTRY
 
         /// <summary>
         /// Add two doubles
@@ -133,7 +128,7 @@ namespace Microsoft.Build.Evaluation
         }
 
         /// <summary>
-        /// Perform a bitwise OR on the first and second (first | second) 
+        /// Perform a bitwise OR on the first and second (first | second)
         /// </summary>
         internal static int BitwiseOr(int first, int second)
         {
@@ -141,7 +136,7 @@ namespace Microsoft.Build.Evaluation
         }
 
         /// <summary>
-        /// Perform a bitwise AND on the first and second (first &amp; second) 
+        /// Perform a bitwise AND on the first and second (first &amp; second)
         /// </summary>
         internal static int BitwiseAnd(int first, int second)
         {
@@ -149,7 +144,7 @@ namespace Microsoft.Build.Evaluation
         }
 
         /// <summary>
-        /// Perform a bitwise XOR on the first and second (first ^ second) 
+        /// Perform a bitwise XOR on the first and second (first ^ second)
         /// </summary>
         internal static int BitwiseXor(int first, int second)
         {
@@ -157,7 +152,7 @@ namespace Microsoft.Build.Evaluation
         }
 
         /// <summary>
-        /// Perform a bitwise NOT on the first and second (~first) 
+        /// Perform a bitwise NOT on the first and second (~first)
         /// </summary>
         internal static int BitwiseNot(int first)
         {
@@ -181,29 +176,36 @@ namespace Microsoft.Build.Evaluation
             return Registry.GetValue(keyName, valueName, defaultValue);
         }
 
+        internal static object GetRegistryValueFromView(string keyName, string valueName, object defaultValue, params object[] views)
+        {
+            if (views == null || views.Length == 0)
+            {
+                views = DefaultRegistryViews;
+            }
+
+            return GetRegistryValueFromView(keyName, valueName, defaultValue, new ArraySegment<object>(views));
+        }
+
+
         /// <summary>
         /// Get the value of the registry key from one of the RegistryView's specified
         /// </summary>
-        internal static object GetRegistryValueFromView(string keyName, string valueName, object defaultValue, params object[] views)
+        internal static object GetRegistryValueFromView(string keyName, string valueName, object defaultValue, ArraySegment<object> views)
         {
-            string subKeyName;
-
             // We will take on handing of default value
             // A we need to act on the null return from the GetValue call below
             // so we can keep searching other registry views
             object result = defaultValue;
 
             // If we haven't been passed any views, then we'll just use the default view
-            if (views == null || views.Length == 0)
+            if (views.Count == 0)
             {
-                views = new object[] { RegistryView.Default };
+                views = new ArraySegment<object>(DefaultRegistryViews);
             }
 
             foreach (object viewObject in views)
             {
-                string viewAsString = viewObject as string;
-
-                if (viewAsString != null)
+                if (viewObject is string viewAsString)
                 {
                     string typeLeafName = typeof(RegistryView).Name + ".";
                     string typeFullName = typeof(RegistryView).FullName + ".";
@@ -219,11 +221,9 @@ namespace Microsoft.Build.Evaluation
                     {
                         // Fake common requests to HKLM that we can resolve
 
-
                         // See if this asks for a specific SDK
-                        var m = Regex.Match(keyName,
-                            @"^HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Microsoft SDKs\\Windows\\v(\d+\.\d+)$",
-                            RegexOptions.IgnoreCase);
+                        var m = RegistrySdkRegex.Value.Match(keyName);
+                        
                         if (m.Success && m.Groups.Count >= 1 && valueName.Equals("InstallRoot", StringComparison.OrdinalIgnoreCase))
                         {
                             return Path.Combine(NativeMethodsShared.FrameworkBasePath, m.Groups[0].Value) + Path.DirectorySeparatorChar;
@@ -232,7 +232,7 @@ namespace Microsoft.Build.Evaluation
                         return string.Empty;
                     }
 
-                    using (RegistryKey key = GetBaseKeyFromKeyName(keyName, view, out subKeyName))
+                    using (RegistryKey key = GetBaseKeyFromKeyName(keyName, view, out string subKeyName))
                     {
                         if (key != null)
                         {
@@ -258,14 +258,40 @@ namespace Microsoft.Build.Evaluation
             // We will have either found a result or defaultValue if one wasn't found at this point
             return result;
         }
+
+#else // FEATURE_WIN32_REGISTRY is off, need to mock the function names to let scrips call these property functions and get NULLs rather than fail with errors
+
+        /// <summary>
+        /// Get the value of the registry key and value, default value is null
+        /// </summary>
+        internal static object GetRegistryValue(string keyName, string valueName)
+        {
+            return null; // FEATURE_WIN32_REGISTRY is off, need to mock the function names to let scrips call these property functions and get NULLs rather than fail with errors
+        }
+
+        /// <summary>
+        /// Get the value of the registry key and value
+        /// </summary>
+        internal static object GetRegistryValue(string keyName, string valueName, object defaultValue)
+        {
+            return defaultValue; // FEATURE_WIN32_REGISTRY is off, need to mock the function names to let scrips call these property functions and get NULLs rather than fail with errors
+        }
+
+        /// <summary>
+        /// Get the value of the registry key from one of the RegistryView's specified
+        /// </summary>
+        internal static object GetRegistryValueFromView(string keyName, string valueName, object defaultValue, params object[] views)
+        {
+            return defaultValue; // FEATURE_WIN32_REGISTRY is off, need to mock the function names to let scrips call these property functions and get NULLs rather than fail with errors
+        }
 #endif
 
         /// <summary>
-        /// Given the absolute location of a file, and a disc location, returns relative file path to that disk location. 
+        /// Given the absolute location of a file, and a disc location, returns relative file path to that disk location.
         /// Throws UriFormatException.
         /// </summary>
         /// <param name="basePath">
-        /// The base path we want to relativize to. Must be absolute.  
+        /// The base path we want to relativize to. Must be absolute.
         /// Should <i>not</i> include a filename as the last segment will be interpreted as a directory.
         /// </param>
         /// <param name="path">
@@ -281,59 +307,26 @@ namespace Microsoft.Build.Evaluation
         }
 
         /// <summary>
-        /// Locate a file in either the directory specified or a location in the
-        /// direcorty structure above that directory.
+        /// Searches upward for a directory containing the specified file, beginning in the specified directory.
         /// </summary>
-        internal static string GetDirectoryNameOfFileAbove(string startingDirectory, string fileName)
+        /// <param name="startingDirectory">The directory to start the search in.</param>
+        /// <param name="fileName">The name of the file to search for.</param>
+        /// <returns>The full path of the directory containing the file if it is found, otherwise an empty string. </returns>
+        internal static string GetDirectoryNameOfFileAbove(string startingDirectory, string fileName, IFileSystem fileSystem)
         {
-            // Canonicalize our starting location
-            string lookInDirectory = Path.GetFullPath(startingDirectory);
-
-            do
-            {
-                // Construct the path that we will use to test against
-                string possibleFileDirectory = Path.Combine(lookInDirectory, fileName);
-
-                // If we successfully locate the file in the directory that we're
-                // looking in, simply return that location. Otherwise we'll
-                // keep moving up the tree.
-                if (File.Exists(possibleFileDirectory))
-                {
-                    // We've found the file, return the directory we found it in
-                    return lookInDirectory;
-                }
-                else
-                {
-                    // GetDirectoryName will return null when we reach the root
-                    // terminating our search
-                    lookInDirectory = Path.GetDirectoryName(lookInDirectory);
-                }
-            }
-            while (lookInDirectory != null);
-
-            // When we didn't find the location, then return an empty string
-            return String.Empty;
+            return FileUtilities.GetDirectoryNameOfFileAbove(startingDirectory, fileName, fileSystem);
         }
 
         /// <summary>
-        /// Searches for a file based on the specified <see cref="IElementLocation"/>.
+        /// Searches upward for the specified file, beginning in the specified <see cref="IElementLocation"/>.
         /// </summary>
-        /// <param name="file">The file to search for.</param>
+        /// <param name="file">The name of the file to search for.</param>
         /// <param name="startingDirectory">An optional directory to start the search in.  The default location is the directory
-        /// of the file containing the property funciton.</param>
+        /// of the file containing the property function.</param>
         /// <returns>The full path of the file if it is found, otherwise an empty string.</returns>
-        internal static string GetPathOfFileAbove(string file, string startingDirectory)
+        internal static string GetPathOfFileAbove(string file, string startingDirectory, IFileSystem fileSystem)
         {
-            // This method does not accept a path, only a file name
-            if(file.Any(i => i.Equals(Path.DirectorySeparatorChar) || i.Equals(Path.AltDirectorySeparatorChar)))
-            {
-                ErrorUtilities.ThrowArgument("InvalidGetPathOfFileAboveParameter", file);
-            }
-
-            // Search for a directory that contains that file
-            string directoryName = GetDirectoryNameOfFileAbove(startingDirectory, file);
-
-            return String.IsNullOrWhiteSpace(directoryName) ? String.Empty : NormalizePath(directoryName, file);
+            return FileUtilities.GetPathOfFileAbove(file, startingDirectory, fileSystem);
         }
 
         /// <summary>
@@ -354,7 +347,7 @@ namespace Microsoft.Build.Evaluation
 
         /// <summary>
         /// Returns true if a task host exists that can service the requested runtime and architecture
-        /// values, and false otherwise. 
+        /// values, and false otherwise.
         /// </summary>
         internal static bool DoesTaskHostExist(string runtime, string architecture)
         {
@@ -425,7 +418,7 @@ namespace Microsoft.Build.Evaluation
         /// <returns>A canonicalized full path with the correct directory separators.</returns>
         internal static string NormalizePath(params string[] path)
         {
-            return FileUtilities.NormalizePath(Path.Combine(path));
+            return FileUtilities.NormalizePath(path);
         }
 
         /// <summary>
@@ -445,6 +438,15 @@ namespace Microsoft.Build.Evaluation
         internal static bool IsOsUnixLike()
         {
             return NativeMethodsShared.IsUnixLike;
+        }
+
+        /// <summary>
+        /// True if current OS is a BSD system.
+        /// </summary>
+        /// <returns></returns>
+        internal static bool IsOsBsdLike()
+        {
+            return NativeMethodsShared.IsBSD;
         }
 
         public static string GetCurrentToolsDirectory()
@@ -482,7 +484,12 @@ namespace Microsoft.Build.Evaluation
             return BuildEnvironmentHelper.Instance.MSBuildExtensionsPath;
         }
 
-        #region Debug only intrinsics
+        public static bool IsRunningFromVisualStudio()
+        {
+            return BuildEnvironmentHelper.Instance.Mode == BuildEnvironmentMode.VisualStudio;
+        }
+
+#region Debug only intrinsics
 
         /// <summary>
         /// returns if the string contains escaped wildcards
@@ -492,7 +499,7 @@ namespace Microsoft.Build.Evaluation
             return new List<string> { "A", "B", "C", "D" };
         }
 
-        #endregion
+#endregion
 
 #if FEATURE_WIN32_REGISTRY
         /// <summary>

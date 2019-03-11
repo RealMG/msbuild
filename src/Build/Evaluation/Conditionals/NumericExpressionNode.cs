@@ -1,10 +1,8 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System.Collections;
-using System.Globalization;
-using System.IO;
 using System;
+using System.Diagnostics;
 
 using Microsoft.Build.Shared;
 
@@ -13,11 +11,10 @@ namespace Microsoft.Build.Evaluation
     /// <summary>
     /// Represents a number - evaluates as numeric.
     /// </summary>
+    [DebuggerDisplay("{DebuggerDisplay,nq}")]
     internal sealed class NumericExpressionNode : OperandExpressionNode
     {
         private string _value;
-
-        private NumericExpressionNode() { }
 
         internal NumericExpressionNode(string value)
         {
@@ -103,5 +100,7 @@ namespace Microsoft.Build.Evaluation
         internal override void ResetState()
         {
         }
+
+        internal override string DebuggerDisplay => $"#\"{_value}\")";
     }
 }

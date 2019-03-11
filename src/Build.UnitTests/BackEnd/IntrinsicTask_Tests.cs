@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Xml;
@@ -10,6 +11,8 @@ using System.Xml;
 using Microsoft.Build.BackEnd;
 using Microsoft.Build.Collections;
 using Microsoft.Build.Construction;
+using Microsoft.Build.Engine.UnitTests;
+using Microsoft.Build.Engine.UnitTests.Globbing;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
 using Microsoft.Build.Framework;
@@ -60,7 +63,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             PropertyDictionary<ProjectPropertyInstance> properties = new PropertyDictionary<ProjectPropertyInstance>();
             ExecuteTask(task, LookupHelpers.CreateLookup(properties));
 
-            Assert.Equal(1, properties.Count);
+            Assert.Single(properties);
             Assert.Equal("v1", properties["p1"].EvaluatedValue);
         }
 
@@ -77,7 +80,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             PropertyDictionary<ProjectPropertyInstance> properties = new PropertyDictionary<ProjectPropertyInstance>();
             ExecuteTask(task, LookupHelpers.CreateLookup(properties));
 
-            Assert.Equal(0, properties.Count);
+            Assert.Empty(properties);
         }
 
         [Fact]
@@ -136,7 +139,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             PropertyDictionary<ProjectPropertyInstance> properties = new PropertyDictionary<ProjectPropertyInstance>();
             ExecuteTask(task, LookupHelpers.CreateLookup(properties));
 
-            Assert.Equal(1, properties.Count);
+            Assert.Single(properties);
             Assert.Equal("", properties["p1"].EvaluatedValue);
         }
 
@@ -243,6 +246,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
                 </ItemGroup>
             </Target>
             </Project>");
+
             IntrinsicTask task = CreateIntrinsicTask(content);
             Lookup lookup = LookupHelpers.CreateEmptyLookup();
             ExecuteTask(task, lookup);
@@ -251,6 +255,27 @@ namespace Microsoft.Build.UnitTests.BackEnd
             ICollection<ProjectItemInstance> i2Group = lookup.GetItems("i2");
             Assert.Equal("a1", i1Group.First().EvaluatedInclude);
             Assert.Equal("b1", i2Group.First().EvaluatedInclude);
+        }
+
+        internal const string TargetitemwithIncludeAndExclude = @"
+                    <Project>
+                       <Target Name=`t`>
+                          <ItemGroup>
+                              <i Include='{0}' Exclude='{1}'/>
+                          </ItemGroup>
+                       </Target>
+                    </Project>
+                ";
+
+        public static IEnumerable<object[]> IncludesAndExcludesWithWildcardsTestData => GlobbingTestData.IncludesAndExcludesWithWildcardsTestData;
+
+        [Theory]
+        [MemberData(nameof(IncludesAndExcludesWithWildcardsTestData))]
+        public void ItemsWithWildcards(string includeString, string excludeString, string[] inputFiles, string[] expectedInclude, bool makeExpectedIncludeAbsolute)
+        {
+            var projectContents = string.Format(TargetitemwithIncludeAndExclude, includeString, excludeString).Cleanup();
+
+            AssertItemEvaluationFromTarget(projectContents, "t", "i", inputFiles, expectedInclude, makeExpectedIncludeAbsolute, normalizeSlashes: true);
         }
 
         [Fact]
@@ -290,7 +315,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             ExecuteTask(task, lookup);
 
             var group = lookup.GetItems("i1");
-            Assert.Equal(1, group.Count);
+            Assert.Single(group);
         }
 
         [Fact]
@@ -310,7 +335,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             ExecuteTask(task, lookup);
 
             var group = lookup.GetItems("i1");
-            Assert.Equal(1, group.Count);
+            Assert.Single(group);
         }
 
         [Fact]
@@ -355,7 +380,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             Assert.Equal(2, group.Count);
 
             group = lookup.GetItems("i2");
-            Assert.Equal(1, group.Count);
+            Assert.Single(group);
         }
 
         [Fact]
@@ -659,7 +684,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             ExecuteTask(task, lookup);
 
             ICollection<ProjectItemInstance> i1Group = lookup.GetItems("i1");
-            Assert.Equal(0, i1Group.Count);
+            Assert.Empty(i1Group);
         }
 
         [Fact]
@@ -852,8 +877,8 @@ namespace Microsoft.Build.UnitTests.BackEnd
 
             ICollection<ProjectItemInstance> i1Group = lookup.GetItems("i1");
             ICollection<ProjectItemInstance> i2Group = lookup.GetItems("i2");
-            Assert.Equal(1, i1Group.Count);
-            Assert.Equal(1, i2Group.Count);
+            Assert.Single(i1Group);
+            Assert.Single(i2Group);
             Assert.Equal("a1", i1Group.First().EvaluatedInclude);
             Assert.Equal("b1", i2Group.First().EvaluatedInclude);
         }
@@ -1568,7 +1593,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             Lookup lookup = LookupHelpers.CreateEmptyLookup();
             ExecuteTask(task, lookup);
 
-            Assert.Equal(0, lookup.GetItems("i1").Count);
+            Assert.Empty(lookup.GetItems("i1"));
         }
 
         [Fact]
@@ -1586,7 +1611,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             Lookup lookup = LookupHelpers.CreateEmptyLookup();
             ExecuteTask(task, lookup);
 
-            Assert.Equal(0, lookup.GetItems("i1").Count);
+            Assert.Empty(lookup.GetItems("i1"));
         }
 
         /// <summary>
@@ -1648,7 +1673,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             Lookup lookup = LookupHelpers.CreateEmptyLookup();
             ExecuteTask(task, lookup);
 
-            Assert.Equal(0, lookup.GetItems("i1").Count);
+            Assert.Empty(lookup.GetItems("i1"));
         }
 
         [Fact]
@@ -1667,7 +1692,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             Lookup lookup = LookupHelpers.CreateEmptyLookup();
             ExecuteTask(task, lookup);
 
-            Assert.Equal(0, lookup.GetItems("i1").Count);
+            Assert.Empty(lookup.GetItems("i1"));
         }
 
         [Fact]
@@ -1686,7 +1711,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             Lookup lookup = LookupHelpers.CreateEmptyLookup();
             ExecuteTask(task, lookup);
 
-            Assert.Equal(0, lookup.GetItems("i1").Count);
+            Assert.Empty(lookup.GetItems("i1"));
         }
 
         [Fact]
@@ -1801,7 +1826,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
 
             ICollection<ProjectItemInstance> i1Group = lookup.GetItems("i1");
 
-            Assert.Equal(1, i1Group.Count);
+            Assert.Single(i1Group);
             Assert.Equal("x", i1Group.First().EvaluatedInclude);
         }
 
@@ -1874,13 +1899,13 @@ namespace Microsoft.Build.UnitTests.BackEnd
 
             // The item was removed during the build
             logger.AssertLogContains("[]");
-            Assert.Equal(0, p.ItemsToBuildWith["i0"].Count);
-            Assert.Equal(0, p.ItemsToBuildWith.ItemTypes.Count);
+            Assert.Empty(p.ItemsToBuildWith["i0"]);
+            Assert.Empty(p.ItemsToBuildWith.ItemTypes);
 
             p = project.CreateProjectInstance();
             // We should still have the item left
-            Assert.Equal(1, p.ItemsToBuildWith["i0"].Count);
-            Assert.Equal(1, p.ItemsToBuildWith.ItemTypes.Count);
+            Assert.Single(p.ItemsToBuildWith["i0"]);
+            Assert.Single(p.ItemsToBuildWith.ItemTypes);
         }
 
         [Fact]
@@ -1906,13 +1931,13 @@ namespace Microsoft.Build.UnitTests.BackEnd
             p.Build(new string[] { "t" }, new ILogger[] { logger });
 
             logger.AssertLogContains("[]");
-            Assert.Equal(0, p.ItemsToBuildWith["i0"].Count);
-            Assert.Equal(0, p.ItemsToBuildWith.ItemTypes.Count);
+            Assert.Empty(p.ItemsToBuildWith["i0"]);
+            Assert.Empty(p.ItemsToBuildWith.ItemTypes);
 
             p = project.CreateProjectInstance();
             // We should still have the item left
-            Assert.Equal(1, p.ItemsToBuildWith["i0"].Count);
-            Assert.Equal(1, p.ItemsToBuildWith.ItemTypes.Count);
+            Assert.Single(p.ItemsToBuildWith["i0"]);
+            Assert.Single(p.ItemsToBuildWith.ItemTypes);
         }
 
         [Fact]
@@ -1943,12 +1968,12 @@ namespace Microsoft.Build.UnitTests.BackEnd
 
             logger.AssertLogContains("[a2;a1;a3][b1]");
             Assert.Equal(3, p.ItemsToBuildWith["i0"].Count);
-            Assert.Equal(1, p.ItemsToBuildWith["i1"].Count);
+            Assert.Single(p.ItemsToBuildWith["i1"]);
             Assert.Equal(2, p.ItemsToBuildWith.ItemTypes.Count);
 
             p = project.CreateProjectInstance();
             Assert.Equal(2, p.ItemsToBuildWith["i0"].Count);
-            Assert.Equal(1, p.ItemsToBuildWith["i1"].Count);
+            Assert.Single(p.ItemsToBuildWith["i1"]);
             Assert.Equal(2, p.ItemsToBuildWith.ItemTypes.Count);
         }
 
@@ -1978,13 +2003,13 @@ namespace Microsoft.Build.UnitTests.BackEnd
             p.Build(new string[] { "t" }, new ILogger[] { logger });
 
             logger.AssertLogContains("[]");
-            Assert.Equal(0, p.ItemsToBuildWith["i0"].Count);
-            Assert.Equal(0, p.ItemsToBuildWith.ItemTypes.Count);
+            Assert.Empty(p.ItemsToBuildWith["i0"]);
+            Assert.Empty(p.ItemsToBuildWith.ItemTypes);
 
             p = project.CreateProjectInstance();
-            Assert.Equal(1, p.ItemsToBuildWith["i0"].Count);
+            Assert.Single(p.ItemsToBuildWith["i0"]);
             Assert.Equal("m1", p.ItemsToBuildWith["i0"].First().GetMetadataValue("m"));
-            Assert.Equal(1, p.ItemsToBuildWith.ItemTypes.Count);
+            Assert.Single(p.ItemsToBuildWith.ItemTypes);
         }
 
         /// <summary>
@@ -2019,10 +2044,10 @@ namespace Microsoft.Build.UnitTests.BackEnd
             Assert.Equal(2, p.ItemsToBuildWith.ItemTypes.Count);
 
             p = project.CreateProjectInstance();
-            Assert.Equal(1, p.ItemsToBuildWith["i0"].Count);
+            Assert.Single(p.ItemsToBuildWith["i0"]);
             Assert.Equal("a1", p.ItemsToBuildWith["i0"].First().EvaluatedInclude);
-            Assert.Equal(0, p.ItemsToBuildWith["i1"].Count);
-            Assert.Equal(1, p.ItemsToBuildWith.ItemTypes.Count);
+            Assert.Empty(p.ItemsToBuildWith["i1"]);
+            Assert.Single(p.ItemsToBuildWith.ItemTypes);
         }
 
         [Fact]
@@ -2051,7 +2076,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             p.Build(new string[] { "t" }, new ILogger[] { logger });
 
             logger.AssertLogContains("[m2]");
-            Assert.Equal(1, p.ItemsToBuildWith["i0"].Count);
+            Assert.Single(p.ItemsToBuildWith["i0"]);
         }
 
         [Fact]
@@ -2081,41 +2106,35 @@ namespace Microsoft.Build.UnitTests.BackEnd
             p.Build(new string[] { "t" }, new ILogger[] { logger });
 
             logger.AssertLogContains("[m3]");
-            Assert.Equal(1, p.ItemsToBuildWith["i0"].Count);
+            Assert.Single(p.ItemsToBuildWith["i0"]);
         }
 
         [Fact]
         public void RemoveWithWildcards()
         {
-            string[] files = null;
-
-            try
+            using (var env = TestEnvironment.Create())
             {
-                files = ObjectModelHelpers.GetTempFiles(2, DateTime.Now);
+                var projectDirectory = env.CreateFolder();
+                env.SetCurrentDirectory(projectDirectory.Path);
+
+                var file1 = env.CreateFile(projectDirectory).Path;
+                var file2 = env.CreateFile(projectDirectory).Path;
 
                 string content = ObjectModelHelpers.CleanupFileContents(@"
                 <Project ToolsVersion='msbuilddefaulttoolsversion' xmlns='msbuildnamespace'>
                 <Target Name='t'>
                     <ItemGroup>
-                        <i1 Include='" + files.First() + ";" + files.ElementAt(1) + @";other'/>
-                        <i1 Remove='$(temp)" + Path.DirectorySeparatorChar + @"*.tmp'/>
+                        <i1 Include='" + file1 + ";" + file2 + @";other'/>
+                        <i1 Remove='" + projectDirectory.Path + Path.DirectorySeparatorChar + @"*.tmp'/>
                     </ItemGroup>
                 </Target></Project>");
                 IntrinsicTask task = CreateIntrinsicTask(content);
                 PropertyDictionary<ProjectPropertyInstance> properties = new PropertyDictionary<ProjectPropertyInstance>();
-                properties.Set(
-                    ProjectPropertyInstance.Create(
-                        "TEMP",
-                        NativeMethodsShared.IsWindows ? Environment.GetEnvironmentVariable("TEMP") : Path.GetTempPath()));
                 Lookup lookup = LookupHelpers.CreateLookup(properties);
                 ExecuteTask(task, lookup);
 
-                Assert.Equal(1, lookup.GetItems("i1").Count);
+                Assert.Single(lookup.GetItems("i1"));
                 Assert.Equal("other", lookup.GetItems("i1").First().EvaluatedInclude);
-            }
-            finally
-            {
-                ObjectModelHelpers.DeleteTempFiles(files);
             }
         }
 
@@ -2167,42 +2186,6 @@ namespace Microsoft.Build.UnitTests.BackEnd
 
             logger.AssertLogContains(new string[] { "start:[j1]", "end:[]", "start:[j1]", "end:[]" });
         }
-
-#if false // Not implemented yet: this was working when we were cloning, but now needs some thought.
-
-        /// <summary>
-        /// The historical task output publishing model prevents a called target seeing outputs
-        /// from tasks in the same target that have already run. We choose to not follow this model
-        /// for itemgroups in targets.
-        /// </summary>
-        [Test]
-        public void RemovesAreVisibleToCalledTarget()
-        {
-            MockLogger logger = new MockLogger();
-            Project p = new Project(XmlReader.Create(new StringReader(@"
-                <Project ToolsVersion='msbuilddefaulttoolsversion' xmlns='msbuildnamespace'>
-                  <ItemGroup>
-                    <i Include='i1;i2'/>
-                  </ItemGroup> 
-                  <Target Name='t'>
-                    <Message Text='a:[@(i)]'/>
-                    <ItemGroup>
-                      <i Remove='i2'/>
-                    </ItemGroup>
-                    <Message Text='b:[@(i)]'/>
-                    <CallTarget Targets='t2'/>
-                    <Message Text='d:[@(i)]'/>                    
-                  </Target>
-                  <Target Name='t2'>
-                    <Message Text='c:[@(i)]'/>
-                  </Target>
-                </Project>
-            ")));
-            p.Build(new string[] { "t" });
-
-            logger.AssertLogContains(new string[] { "a:[i1;i2]", "b:[i1]", "c:[i1]", "d:[i1]" });
-        }
-#endif
 
         /// <summary>
         /// Whidbey behavior was that items/properties emitted by a target being called, were
@@ -2433,7 +2416,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             Lookup lookup = LookupHelpers.CreateEmptyLookup();
             ExecuteTask(task, lookup);
 
-            Assert.Equal(0, lookup.GetItems("i1").Count);
+            Assert.Empty(lookup.GetItems("i1"));
         }
 
         [Fact]
@@ -2846,16 +2829,16 @@ namespace Microsoft.Build.UnitTests.BackEnd
 
             logger.AssertLogContains("[m0][n0]", "[m1][n1]");
 
-            Assert.Equal(1, p.ItemsToBuildWith["i0"].Count);
-            Assert.Equal(1, p.ItemsToBuildWith["i1"].Count);
+            Assert.Single(p.ItemsToBuildWith["i0"]);
+            Assert.Single(p.ItemsToBuildWith["i1"]);
             Assert.Equal("m0", p.ItemsToBuildWith["i0"].First().GetMetadataValue("m"));
             Assert.Equal("n0", p.ItemsToBuildWith["i0"].First().GetMetadataValue("n"));
             Assert.Equal("m1", p.ItemsToBuildWith["i1"].First().GetMetadataValue("m"));
             Assert.Equal("n1", p.ItemsToBuildWith["i1"].First().GetMetadataValue("n"));
 
             p = project.CreateProjectInstance();
-            Assert.Equal(1, p.ItemsToBuildWith["i0"].Count);
-            Assert.Equal(0, p.ItemsToBuildWith["i1"].Count);
+            Assert.Single(p.ItemsToBuildWith["i0"]);
+            Assert.Empty(p.ItemsToBuildWith["i1"]);
             Assert.Equal("m0", p.ItemsToBuildWith["i0"].First().GetMetadataValue("m"));
             Assert.Equal("n0", p.ItemsToBuildWith["i0"].First().GetMetadataValue("n"));
         }
@@ -3538,7 +3521,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             entry.RequestConfiguration.Project = projectInstance;
             IntrinsicTask task = IntrinsicTask.InstantiateTask(
                 targetChild,
-                nodeContext.LogProjectStarted(entry).LogTargetBatchStarted(projectInstance.FullPath, projectInstance.Targets["t"], null),
+                nodeContext.LogProjectStarted(entry).LogTargetBatchStarted(projectInstance.FullPath, projectInstance.Targets["t"], null, TargetBuiltReason.None),
                 projectInstance,
                 false);
 
@@ -3558,6 +3541,36 @@ namespace Microsoft.Build.UnitTests.BackEnd
             }
 
             task.ExecuteTask(lookup);
+        }
+
+        internal static void AssertItemEvaluationFromTarget(string projectContents, string targetName, string itemType, string[] inputFiles, string[] expectedInclude, bool makeExpectedIncludeAbsolute = false, Dictionary<string, string>[] expectedMetadataPerItem = null, bool normalizeSlashes = false)
+        {
+            ObjectModelHelpers.AssertItemEvaluationFromGenericItemEvaluator((p, c) =>
+                {
+                    var project = new Project(p, new Dictionary<string, string>(), MSBuildConstants.CurrentToolsVersion, c);
+                    var projectInstance = project.CreateProjectInstance();
+                    var targetChild = projectInstance.Targets["t"].Children.First();
+
+                    var nodeContext = new NodeLoggingContext(new MockLoggingService(), 1, false);
+                    var entry = new BuildRequestEntry(new BuildRequest(1 /* submissionId */, 0, 1, new string[] { targetName }, null, BuildEventContext.Invalid, null), new BuildRequestConfiguration(1, new BuildRequestData("projectFile", new Dictionary<string, string>(), "3.5", new string[0], null), "2.0"));
+                    entry.RequestConfiguration.Project = projectInstance;
+                    var task = IntrinsicTask.InstantiateTask(
+                        targetChild,
+                        nodeContext.LogProjectStarted(entry).LogTargetBatchStarted(projectInstance.FullPath, projectInstance.Targets["t"], null, TargetBuiltReason.None),
+                        projectInstance,
+                        false);
+
+                    var lookup = new Lookup(new ItemDictionary<ProjectItemInstance>(), new PropertyDictionary<ProjectPropertyInstance>());
+                    task.ExecuteTask(lookup);
+
+                    return lookup.GetItems(itemType).Select(i => (ObjectModelHelpers.TestItem)new ObjectModelHelpers.ProjectItemInstanceTestItemAdapter(i)).ToList();
+                },
+                projectContents,
+                inputFiles,
+                expectedInclude,
+                makeExpectedIncludeAbsolute,
+                expectedMetadataPerItem,
+                normalizeSlashes);
         }
         #endregion
     }

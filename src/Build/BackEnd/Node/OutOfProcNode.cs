@@ -1,23 +1,14 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Class implementing an out-of-proc node.</summary>
-//-----------------------------------------------------------------------
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.Linq;
-using System.Text;
 using System.Globalization;
 using System.Threading;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 using Microsoft.Build.BackEnd;
 using Microsoft.Build.BackEnd.Logging;
 using Microsoft.Build.Evaluation;
@@ -25,6 +16,8 @@ using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
 using Microsoft.Build.Internal;
 using Microsoft.Build.BackEnd.Components.Caching;
+using Microsoft.Build.BackEnd.SdkResolution;
+using SdkResult = Microsoft.Build.BackEnd.SdkResolution.SdkResult;
 
 namespace Microsoft.Build.Execution
 {
@@ -58,7 +51,7 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// The component factories.
         /// </summary>
-        private BuildComponentFactoryCollection _componentFactories;
+        private readonly BuildComponentFactoryCollection _componentFactories;
 
         /// <summary>
         /// The build system parameters.
@@ -78,22 +71,22 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// The global config cache.
         /// </summary>
-        private IConfigCache _globalConfigCache;
+        private readonly IConfigCache _globalConfigCache;
 
         /// <summary>
         /// The global node manager
         /// </summary>
-        private INodeManager _taskHostNodeManager;
+        private readonly INodeManager _taskHostNodeManager;
 
         /// <summary>
         /// The build request engine.
         /// </summary>
-        private IBuildRequestEngine _buildRequestEngine;
+        private readonly IBuildRequestEngine _buildRequestEngine;
 
         /// <summary>
         /// The packet factory.
         /// </summary>
-        private NodePacketFactory _packetFactory;
+        private readonly NodePacketFactory _packetFactory;
 
         /// <summary>
         /// The current node configuration
@@ -103,17 +96,17 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// The queue of packets we have received but which have not yet been processed.
         /// </summary>
-        private ConcurrentQueue<INodePacket> _receivedPackets;
+        private readonly ConcurrentQueue<INodePacket> _receivedPackets;
 
         /// <summary>
         /// The event which is set when we receive packets.
         /// </summary>
-        private AutoResetEvent _packetReceivedEvent;
+        private readonly AutoResetEvent _packetReceivedEvent;
 
         /// <summary>
         /// The event which is set when we should shut down.
         /// </summary>
-        private ManualResetEvent _shutdownEvent;
+        private readonly ManualResetEvent _shutdownEvent;
 
         /// <summary>
         /// The reason we are shutting down.
@@ -128,37 +121,27 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// Flag indicating if we should debug communications or not.
         /// </summary>
-        private bool _debugCommunications = false;
+        private readonly bool _debugCommunications;
 
         /// <summary>
         /// Data for the use of LegacyThreading semantics.
         /// </summary>
-        private LegacyThreadingData _legacyThreadingData;
+        private readonly LegacyThreadingData _legacyThreadingData;
 
-#if !FEATURE_NAMED_PIPES_FULL_DUPLEX
-        private string _clientToServerPipeHandle;
-        private string _serverToClientPipeHandle;
-#endif
+        /// <summary>
+        /// The current <see cref="ISdkResolverService"/> instance.
+        /// </summary>
+        private readonly ISdkResolverService _sdkResolverService;
 
         /// <summary>
         /// Constructor.
         /// </summary>
-        public OutOfProcNode(
-#if !FEATURE_NAMED_PIPES_FULL_DUPLEX
-            string clientToServerPipeHandle,
-            string serverToClientPipeHandle
-#endif       
-            )
+        public OutOfProcNode()
         {
             s_isOutOfProcNode = true;
 
 #if FEATURE_APPDOMAIN_UNHANDLED_EXCEPTION
-            AppDomain.CurrentDomain.UnhandledException += new UnhandledExceptionEventHandler(ExceptionHandling.UnhandledExceptionHandler);
-#endif
-
-#if !FEATURE_NAMED_PIPES_FULL_DUPLEX
-            _clientToServerPipeHandle = clientToServerPipeHandle;
-            _serverToClientPipeHandle = serverToClientPipeHandle;
+            AppDomain.CurrentDomain.UnhandledException += ExceptionHandling.UnhandledExceptionHandler;
 #endif
 
             _debugCommunications = (Environment.GetEnvironmentVariable("MSBUILDDEBUGCOMM") == "1");
@@ -176,15 +159,22 @@ namespace Microsoft.Build.Execution
             _globalConfigCache = (this as IBuildComponentHost).GetComponent(BuildComponentType.ConfigCache) as IConfigCache;
             _taskHostNodeManager = (this as IBuildComponentHost).GetComponent(BuildComponentType.TaskHostNodeManager) as INodeManager;
 
+            // Create a factory for the out-of-proc SDK resolver service which can pass our SendPacket delegate to be used for sending packets to the main node
+            OutOfProcNodeSdkResolverServiceFactory sdkResolverServiceFactory = new OutOfProcNodeSdkResolverServiceFactory(SendPacket);
+
+            ((IBuildComponentHost) this).RegisterFactory(BuildComponentType.SdkResolverService, sdkResolverServiceFactory.CreateInstance);
+
+            _sdkResolverService = (this as IBuildComponentHost).GetComponent(BuildComponentType.SdkResolverService) as ISdkResolverService;
+            
             if (s_projectRootElementCache == null)
             {
                 s_projectRootElementCache = new ProjectRootElementCache(true /* automatically reload any changes from disk */);
             }
 
-            _buildRequestEngine.OnEngineException += new EngineExceptionDelegate(OnEngineException);
-            _buildRequestEngine.OnNewConfigurationRequest += new NewConfigurationRequestDelegate(OnNewConfigurationRequest);
-            _buildRequestEngine.OnRequestBlocked += new RequestBlockedDelegate(OnNewRequest);
-            _buildRequestEngine.OnRequestComplete += new RequestCompleteDelegate(OnRequestComplete);
+            _buildRequestEngine.OnEngineException += OnEngineException;
+            _buildRequestEngine.OnNewConfigurationRequest += OnNewConfigurationRequest;
+            _buildRequestEngine.OnRequestBlocked += OnNewRequest;
+            _buildRequestEngine.OnRequestComplete += OnRequestComplete;
 
             (this as INodePacketFactory).RegisterPacketHandler(NodePacketType.BuildRequest, BuildRequest.FactoryForDeserialization, this);
             (this as INodePacketFactory).RegisterPacketHandler(NodePacketType.BuildRequestConfiguration, BuildRequestConfiguration.FactoryForDeserialization, this);
@@ -192,61 +182,35 @@ namespace Microsoft.Build.Execution
             (this as INodePacketFactory).RegisterPacketHandler(NodePacketType.BuildRequestUnblocker, BuildRequestUnblocker.FactoryForDeserialization, this);
             (this as INodePacketFactory).RegisterPacketHandler(NodePacketType.NodeConfiguration, NodeConfiguration.FactoryForDeserialization, this);
             (this as INodePacketFactory).RegisterPacketHandler(NodePacketType.NodeBuildComplete, NodeBuildComplete.FactoryForDeserialization, this);
+            (this as INodePacketFactory).RegisterPacketHandler(NodePacketType.ResolveSdkResponse, SdkResult.FactoryForDeserialization, _sdkResolverService as INodePacketHandler);
         }
 
         /// <summary>
         /// Get the logging service for a build.
         /// </summary>
         /// <returns>The logging service.</returns>
-        ILoggingService IBuildComponentHost.LoggingService
-        {
-            get
-            {
-                return _loggingService;
-            }
-        }
+        ILoggingService IBuildComponentHost.LoggingService => _loggingService;
 
         /// <summary>
         /// Retrieves the LegacyThreadingData associated with a particular build manager
         /// </summary>
-        LegacyThreadingData IBuildComponentHost.LegacyThreadingData
-        {
-            get
-            {
-                return _legacyThreadingData;
-            }
-        }
+        LegacyThreadingData IBuildComponentHost.LegacyThreadingData => _legacyThreadingData;
 
         /// <summary>
         /// Retrieves the name of this component host.
         /// </summary>
-        string IBuildComponentHost.Name
-        {
-            get
-            {
-                return "OutOfProc";
-            }
-        }
+        string IBuildComponentHost.Name => "OutOfProc";
 
         /// <summary>
         /// Retrieves the build parameters for the current build.
         /// </summary>
         /// <returns>The build parameters.</returns>
-        BuildParameters IBuildComponentHost.BuildParameters
-        {
-            get
-            {
-                return _buildParameters;
-            }
-        }
+        BuildParameters IBuildComponentHost.BuildParameters => _buildParameters;
 
         /// <summary>
         /// Whether the current appdomain has an out of proc node.
         /// </summary>
-        internal static bool IsOutOfProcNode
-        {
-            get { return s_isOutOfProcNode; }
-        }
+        internal static bool IsOutOfProcNode => s_isOutOfProcNode;
 
         #region INode Members
 
@@ -270,18 +234,14 @@ namespace Microsoft.Build.Execution
         /// <returns>The reason for shutting down.</returns>
         public NodeEngineShutdownReason Run(bool enableReuse, out Exception shutdownException)
         {
-#if FEATURE_NAMED_PIPES_FULL_DUPLEX
             // Console.WriteLine("Run called at {0}", DateTime.Now);
             string pipeName = "MSBuild" + Process.GetCurrentProcess().Id;
 
             _nodeEndpoint = new NodeEndpointOutOfProc(pipeName, this, enableReuse);
-#else
-            _nodeEndpoint = new NodeEndpointOutOfProc(_clientToServerPipeHandle, _serverToClientPipeHandle, this, enableReuse);
-#endif
-            _nodeEndpoint.OnLinkStatusChanged += new LinkStatusChangedDelegate(OnLinkStatusChanged);
+            _nodeEndpoint.OnLinkStatusChanged += OnLinkStatusChanged;
             _nodeEndpoint.Listen(this);
 
-            WaitHandle[] waitHandles = new WaitHandle[] { _shutdownEvent, _packetReceivedEvent };
+            var waitHandles = new WaitHandle[] { _shutdownEvent, _packetReceivedEvent };
 
             // Get the current directory before doing any work. We need this so we can restore the directory when the node shutsdown.
             while (true)
@@ -294,9 +254,8 @@ namespace Microsoft.Build.Execution
                         return shutdownReason;
 
                     case 1:
-                        INodePacket packet = null;
 
-                        while (_receivedPackets.TryDequeue(out packet))
+                        while (_receivedPackets.TryDequeue(out INodePacket packet))
                         {
                             if (packet != null)
                             {
@@ -365,7 +324,7 @@ namespace Microsoft.Build.Execution
         /// <param name="nodeId">The node from which the packet was received.</param>
         /// <param name="packetType">The packet type.</param>
         /// <param name="translator">The translator to use as a source for packet data.</param>
-        void INodePacketFactory.DeserializeAndRoutePacket(int nodeId, NodePacketType packetType, INodePacketTranslator translator)
+        void INodePacketFactory.DeserializeAndRoutePacket(int nodeId, NodePacketType packetType, ITranslator translator)
         {
             _packetFactory.DeserializeAndRoutePacket(nodeId, packetType, translator);
         }
@@ -472,6 +431,9 @@ namespace Microsoft.Build.Execution
                 }
             }
 
+            // Signal the SDK resolver service to shutdown
+            ((IBuildComponent)_sdkResolverService).ShutdownComponent();
+
             // Dispose of any build registered objects
             IRegisteredTaskObjectCache objectCache = (IRegisteredTaskObjectCache)(_componentFactories.GetComponent(BuildComponentType.RegisteredTaskObjectCache));
             objectCache.DisposeCacheObjects(RegisteredTaskObjectLifetime.Build);
@@ -485,10 +447,9 @@ namespace Microsoft.Build.Execution
             // Shutdown any Out Of Proc Nodes Created
             _taskHostNodeManager.ShutdownConnectedNodes(_shutdownReason == NodeEngineShutdownReason.BuildCompleteReuse);
 
-#if FEATURE_ENVIRONMENT_SYSTEMDIRECTORY
-            // Restore the original current directory.
-            NativeMethodsShared.SetCurrentDirectory(Environment.SystemDirectory);
-#endif
+            // On Windows, a process holds a handle to the current directory,
+            // so reset it away from a user-requested folder that may get deleted.
+            NativeMethodsShared.SetCurrentDirectory(BuildEnvironmentHelper.Instance.CurrentMSBuildToolsDirectory);
 
             // Restore the original environment.
             // If the node was never configured, this will be null.
@@ -522,7 +483,7 @@ namespace Microsoft.Build.Execution
                 // Shut down logging, which will cause all queued logging messages to be sent.
                 if (null != _loggingContext && null != _loggingService)
                 {
-                    _loggingContext.LoggingService.OnLoggingThreadException -= new LoggingExceptionDelegate(OnLoggingThreadException);
+                    _loggingContext.LoggingService.OnLoggingThreadException -= OnLoggingThreadException;
                     _loggingContext = null;
                 }
 
@@ -534,7 +495,7 @@ namespace Microsoft.Build.Execution
                     _nodeEndpoint.SendData(new NodeShutdown(_shutdownReason == NodeEngineShutdownReason.Error ? NodeShutdownReason.Error : NodeShutdownReason.Requested, exception));
 
                     // Flush all packets to the pipe and close it down.  This blocks until the shutdown is complete.
-                    _nodeEndpoint.OnLinkStatusChanged -= new LinkStatusChangedDelegate(OnLinkStatusChanged);
+                    _nodeEndpoint.OnLinkStatusChanged -= OnLinkStatusChanged;
                 }
 
                 _nodeEndpoint.Disconnect();
@@ -550,14 +511,12 @@ namespace Microsoft.Build.Execution
         [SuppressMessage("Microsoft.Reliability", "CA2001:AvoidCallingProblematicMethods", MessageId = "System.GC.Collect", Justification = "Required because when calling this method, we want the memory back NOW.")]
         private void CleanupCaches()
         {
-            IConfigCache configCache = _componentFactories.GetComponent(BuildComponentType.ConfigCache) as IConfigCache;
-            if (null != configCache)
+            if (_componentFactories.GetComponent(BuildComponentType.ConfigCache) is IConfigCache configCache)
             {
                 configCache.ClearConfigurations();
             }
 
-            IResultsCache resultsCache = _componentFactories.GetComponent(BuildComponentType.ResultsCache) as IResultsCache;
-            if (null != resultsCache)
+            if (_componentFactories.GetComponent(BuildComponentType.ResultsCache) is IResultsCache resultsCache)
             {
                 resultsCache.ClearResults();
             }
@@ -598,7 +557,7 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// Callback for logging packets to be sent.
         /// </summary>
-        private void SendLoggingPacket(INodePacket packet)
+        private void SendPacket(INodePacket packet)
         {
             if (_nodeEndpoint.LinkStatus == LinkStatus.Active)
             {
@@ -692,10 +651,8 @@ namespace Microsoft.Build.Execution
             }
             catch (DirectoryNotFoundException)
             {
-#if FEATURE_ENVIRONMENT_SYSTEMDIRECTORY
                 // Somehow the startup directory vanished. This can happen if build was started from a USB Key and it was removed.
-                NativeMethodsShared.SetCurrentDirectory(Environment.SystemDirectory);
-#endif
+                NativeMethodsShared.SetCurrentDirectory(BuildEnvironmentHelper.Instance.CurrentMSBuildToolsDirectory);
             }
 
             // Replicate the environment.  First, unset any environment variables set by the previous configuration.
@@ -728,13 +685,8 @@ namespace Microsoft.Build.Execution
             }
 
             // Set the culture.
-#if FEATURE_CULTUREINFO_SETTERS
             CultureInfo.CurrentCulture = _buildParameters.Culture;
             CultureInfo.CurrentUICulture = _buildParameters.UICulture;
-#else
-            Thread.CurrentThread.CurrentCulture = _buildParameters.Culture;
-            Thread.CurrentThread.CurrentUICulture = _buildParameters.UICulture;
-#endif
 
             // Get the node ID.
             _buildParameters.NodeId = configuration.NodeId;
@@ -751,9 +703,23 @@ namespace Microsoft.Build.Execution
 
             _loggingService = _componentFactories.GetComponent(BuildComponentType.LoggingService) as ILoggingService;
 
-            BuildEventArgTransportSink sink = new BuildEventArgTransportSink(SendLoggingPacket);
+            BuildEventArgTransportSink sink = new BuildEventArgTransportSink(SendPacket);
 
             _shutdownException = null;
+
+            if (configuration.LoggingNodeConfiguration.IncludeEvaluationMetaprojects)
+            {
+                _loggingService.IncludeEvaluationMetaprojects = true;
+            }
+            if (configuration.LoggingNodeConfiguration.IncludeEvaluationProfiles)
+            {
+                _loggingService.IncludeEvaluationProfile = true;
+            }
+
+            if (configuration.LoggingNodeConfiguration.IncludeTaskInputs)
+            {
+                _loggingService.IncludeTaskInputs = true;
+            }
 
             try
             {
@@ -773,7 +739,7 @@ namespace Microsoft.Build.Execution
                 OnEngineException(ex);
             }
 
-            _loggingService.OnLoggingThreadException += new LoggingExceptionDelegate(OnLoggingThreadException);
+            _loggingService.OnLoggingThreadException += OnLoggingThreadException;
 
             string forwardPropertiesFromChild = Environment.GetEnvironmentVariable("MSBUILDFORWARDPROPERTIESFROMCHILD");
             string[] propertyListToSerialize = null;
@@ -781,7 +747,7 @@ namespace Microsoft.Build.Execution
             // Get a list of properties which should be serialized
             if (!String.IsNullOrEmpty(forwardPropertiesFromChild))
             {
-                propertyListToSerialize = forwardPropertiesFromChild.Split(new char[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+                propertyListToSerialize = forwardPropertiesFromChild.Split(MSBuildConstants.SemicolonChar, StringSplitOptions.RemoveEmptyEntries);
             }
 
             _loggingService.PropertiesToSerialize = propertyListToSerialize;
@@ -802,8 +768,7 @@ namespace Microsoft.Build.Execution
 
             if (_shutdownException != null)
             {
-                Exception exception;
-                HandleShutdown(out exception);
+                HandleShutdown(out Exception exception);
                 throw exception;
             }
 

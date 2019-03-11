@@ -13,6 +13,8 @@ using Microsoft.Win32;
 using Xunit;
 using SystemProcessorArchitecture = System.Reflection.ProcessorArchitecture;
 using ItemMetadataNames = Microsoft.Build.Tasks.ItemMetadataNames;
+using Xunit.Abstractions;
+using Shouldly;
 
 namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 {
@@ -87,6 +89,10 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             "<File AssemblyName='System.Xml' Version='2.0.0.0' PublicKeyToken='b03f5f7f11d50a3a' Culture='Neutral' FileVersion='2.0.50727.208' InGAC='true' />" +
             "</FileList >";
 
+        public Miscellaneous(ITestOutputHelper output) : base(output)
+        {
+        }
+
 
 
         /// <summary>
@@ -103,7 +109,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void CopyLocalDependenciesWhenParentReferenceInGacFalseAllParentsInGac()
         {
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             ITaskItem[] assemblyNames = new TaskItem[]
                     {
@@ -129,12 +135,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             bool succeeded = Execute(t);
 
             Assert.True(succeeded);
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            Assert.Equal(1, t.ResolvedDependencyFiles.Length);
+            Assert.Single(t.ResolvedFiles);
+            Assert.Single(t.ResolvedDependencyFiles);
             Assert.Equal(0, engine.Errors);
             Assert.Equal(0, engine.Warnings);
-            AssertNoCase("false", t.ResolvedDependencyFiles[0].GetMetadata("CopyLocal"));
-            AssertNoCase("false", t.ResolvedFiles[0].GetMetadata("CopyLocal"));
+            t.ResolvedDependencyFiles[0].GetMetadata("CopyLocal").ShouldBe("false", StringCompareShould.IgnoreCase);
+            t.ResolvedFiles[0].GetMetadata("CopyLocal").ShouldBe("false", StringCompareShould.IgnoreCase);
         }
 
 
@@ -143,7 +149,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void ValidateFrameworkNameError()
         {
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             ITaskItem[] assemblyNames = new TaskItem[]
                     {
@@ -162,7 +168,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Assert.False(succeeded);
             Assert.Equal(1, engine.Errors);
             Assert.Equal(0, engine.Warnings);
-            string message = ResourceUtilities.FormatResourceString("ResolveAssemblyReference.InvalidParameter", "TargetFrameworkMoniker", t.TargetFrameworkMoniker, String.Empty);
+            string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword("ResolveAssemblyReference.InvalidParameter", "TargetFrameworkMoniker", t.TargetFrameworkMoniker, String.Empty);
             engine.AssertLogContains(message);
         }
 
@@ -181,7 +187,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void CopyLocalDependenciesWhenParentReferenceInGacFalseSomeParentsInGac()
         {
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             ITaskItem[] assemblyNames = new TaskItem[]
                     {
@@ -209,12 +215,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.True(succeeded);
             Assert.Equal(2, t.ResolvedFiles.Length);
-            Assert.Equal(1, t.ResolvedDependencyFiles.Length);
+            Assert.Single(t.ResolvedDependencyFiles);
             Assert.Equal(0, engine.Errors);
             Assert.Equal(0, engine.Warnings);
-            AssertNoCase("false", t.ResolvedFiles[0].GetMetadata("CopyLocal"));
-            AssertNoCase("true", t.ResolvedFiles[1].GetMetadata("CopyLocal"));
-            AssertNoCase("true", t.ResolvedDependencyFiles[0].GetMetadata("CopyLocal"));
+            t.ResolvedFiles[0].GetMetadata("CopyLocal").ShouldBe("false", StringCompareShould.IgnoreCase);
+            t.ResolvedFiles[1].GetMetadata("CopyLocal").ShouldBe("true", StringCompareShould.IgnoreCase);
+            t.ResolvedDependencyFiles[0].GetMetadata("CopyLocal").ShouldBe("true", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -224,10 +230,10 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void TestSetRuntimeVersion()
         {
             Version parsedVersion = ResolveAssemblyReference.SetTargetedRuntimeVersion("4.0.21006");
-            Assert.True(parsedVersion.Equals(new Version("4.0.21006")));
+            Assert.Equal(new Version("4.0.21006"), parsedVersion);
 
             parsedVersion = ResolveAssemblyReference.SetTargetedRuntimeVersion("BadVersion");
-            Assert.True(parsedVersion.Equals(new Version("2.0.50727")));
+            Assert.Equal(new Version("2.0.50727"), parsedVersion);
         }
 
         /// <summary>
@@ -244,7 +250,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void CopyLocalDependenciesWhenParentReferenceInGacTrueAllParentsInGac()
         {
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             ITaskItem[] assemblyNames = new TaskItem[]
                     {
@@ -270,12 +276,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             bool succeeded = Execute(t);
 
             Assert.True(succeeded);
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            Assert.Equal(1, t.ResolvedDependencyFiles.Length);
+            Assert.Single(t.ResolvedFiles);
+            Assert.Single(t.ResolvedDependencyFiles);
             Assert.Equal(0, engine.Errors);
             Assert.Equal(0, engine.Warnings);
-            AssertNoCase("true", t.ResolvedDependencyFiles[0].GetMetadata("CopyLocal"));
-            AssertNoCase("false", t.ResolvedFiles[0].GetMetadata("CopyLocal"));
+            t.ResolvedDependencyFiles[0].GetMetadata("CopyLocal").ShouldBe("true", StringCompareShould.IgnoreCase);
+            t.ResolvedFiles[0].GetMetadata("CopyLocal").ShouldBe("false", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -293,7 +299,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void CopyLocalDependenciesWhenParentReferenceInGacTrueSomeParentsInGac()
         {
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             ITaskItem[] assemblyNames = new TaskItem[]
                     {
@@ -321,12 +327,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.True(succeeded);
             Assert.Equal(2, t.ResolvedFiles.Length);
-            Assert.Equal(1, t.ResolvedDependencyFiles.Length);
+            Assert.Single(t.ResolvedDependencyFiles);
             Assert.Equal(0, engine.Errors);
             Assert.Equal(0, engine.Warnings);
-            AssertNoCase("false", t.ResolvedFiles[0].GetMetadata("CopyLocal"));
-            AssertNoCase("true", t.ResolvedFiles[1].GetMetadata("CopyLocal"));
-            AssertNoCase("true", t.ResolvedDependencyFiles[0].GetMetadata("CopyLocal"));
+            t.ResolvedFiles[0].GetMetadata("CopyLocal").ShouldBe("false", StringCompareShould.IgnoreCase);
+            t.ResolvedFiles[1].GetMetadata("CopyLocal").ShouldBe("true", StringCompareShould.IgnoreCase);
+            t.ResolvedDependencyFiles[0].GetMetadata("CopyLocal").ShouldBe("true", StringCompareShould.IgnoreCase);
         }
 
         [Fact]
@@ -334,7 +340,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void CopyLocalDependenciesWhenParentReferenceNotInGac()
         {
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             ITaskItem[] assemblyNames = new TaskItem[]
                     {
@@ -353,13 +359,13 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             bool succeeded = Execute(t);
 
             Assert.True(succeeded);
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            Assert.Equal(1, t.CopyLocalFiles.Length);
-            Assert.Equal(1, t.ResolvedDependencyFiles.Length);
+            Assert.Single(t.ResolvedFiles);
+            Assert.Single(t.CopyLocalFiles);
+            Assert.Single(t.ResolvedDependencyFiles);
             Assert.Equal(0, engine.Errors);
             Assert.Equal(0, engine.Warnings);
-            AssertNoCase("true", t.ResolvedFiles[0].GetMetadata("CopyLocal"));
-            AssertNoCase("false", t.ResolvedDependencyFiles[0].GetMetadata("CopyLocal"));
+            t.ResolvedFiles[0].GetMetadata("CopyLocal").ShouldBe("true", StringCompareShould.IgnoreCase);
+            t.ResolvedDependencyFiles[0].GetMetadata("CopyLocal").ShouldBe("false", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -371,7 +377,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void CopyLocalLegacyBehavior()
         {
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             ITaskItem[] assemblyNames = new TaskItem[]
                     {
@@ -392,13 +398,13 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             bool succeeded = Execute(t);
 
             Assert.True(succeeded);
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            Assert.Equal(1, t.CopyLocalFiles.Length);
-            Assert.Equal(1, t.ResolvedDependencyFiles.Length);
+            Assert.Single(t.ResolvedFiles);
+            Assert.Single(t.CopyLocalFiles);
+            Assert.Single(t.ResolvedDependencyFiles);
             Assert.Equal(0, engine.Errors);
             Assert.Equal(0, engine.Warnings);
-            AssertNoCase("true", t.ResolvedFiles[0].GetMetadata("CopyLocal"));
-            AssertNoCase("false", t.ResolvedDependencyFiles[0].GetMetadata("CopyLocal"));
+            t.ResolvedFiles[0].GetMetadata("CopyLocal").ShouldBe("true", StringCompareShould.IgnoreCase);
+            t.ResolvedDependencyFiles[0].GetMetadata("CopyLocal").ShouldBe("false", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -415,7 +421,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Console.WriteLine("Performing Miscellaneous.Basic() test");
 
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             // Construct a list of assembly files.
             ITaskItem[] assemblyFiles = new TaskItem[]
@@ -474,61 +480,61 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 if (String.Compare(item.ItemSpec, Path.Combine(s_myVersion20Path, "System.XML.dll"), StringComparison.OrdinalIgnoreCase) == 0)
                 {
                     systemXmlFound = true;
-                    AssertNoCase("", item.GetMetadata("DestinationSubDirectory"));
-                    AssertNoCase("1776", item.GetMetadata("RandomAttributeThatShouldBeForwarded"));
-                    AssertNoCase("false", item.GetMetadata("CopyLocal"));
-                    AssertNoCase("System.Xml, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", item.GetMetadata("FusionName"));
-                    AssertNoCase("v2.0.50727", item.GetMetadata(ItemMetadataNames.imageRuntime));
-                    AssertNoCase("NOPE", item.GetMetadata(ItemMetadataNames.winMDFile));
-                    AssertNoCase("IMPL", item.GetMetadata(ItemMetadataNames.winmdImplmentationFile));
+                    item.GetMetadata("DestinationSubDirectory").ShouldBe("", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("RandomAttributeThatShouldBeForwarded").ShouldBe("1776", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("CopyLocal").ShouldBe("false", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("FusionName").ShouldBe("System.Xml, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", StringCompareShould.IgnoreCase);
+                    item.GetMetadata(ItemMetadataNames.imageRuntime).ShouldBe("v2.0.50727", StringCompareShould.IgnoreCase);
+                    item.GetMetadata(ItemMetadataNames.winMDFile).ShouldBe("NOPE", StringCompareShould.IgnoreCase);
+                    item.GetMetadata(ItemMetadataNames.winmdImplmentationFile).ShouldBe("IMPL", StringCompareShould.IgnoreCase);
                 }
                 else if (item.ItemSpec.EndsWith(Path.Combine("v2.0.MyVersion", "System.Data.dll")))
                 {
                     systemDataFound = true;
-                    AssertNoCase("", item.GetMetadata("DestinationSubDirectory"));
-                    AssertNoCase("", item.GetMetadata("RandomAttributeThatShouldBeForwarded"));
-                    AssertNoCase("false", item.GetMetadata("CopyLocal"));
-                    AssertNoCase("System.Data, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", item.GetMetadata("FusionName"));
+                    item.GetMetadata("DestinationSubDirectory").ShouldBe("", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("RandomAttributeThatShouldBeForwarded").ShouldBe("", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("CopyLocal").ShouldBe("false", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("FusionName").ShouldBe("System.Data, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", StringCompareShould.IgnoreCase);
                 }
                 else if (item.ItemSpec.EndsWith(Path.Combine("v2.0.MyVersion", "MyGacAssembly.dll")))
                 {
                     myGacAssemblyFound = true;
-                    AssertNoCase("", item.GetMetadata("DestinationSubDirectory"));
-                    AssertNoCase("", item.GetMetadata("RandomAttributeThatShouldBeForwarded"));
-                    AssertNoCase("false", item.GetMetadata("CopyLocal"));
+                    item.GetMetadata("DestinationSubDirectory").ShouldBe("", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("RandomAttributeThatShouldBeForwarded").ShouldBe("", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("CopyLocal").ShouldBe("false", StringCompareShould.IgnoreCase);
                 }
                 else if (item.ItemSpec.EndsWith(s_myPrivateAssemblyRelPath))
                 {
                     myPrivateAssemblyFound = true;
-                    AssertNoCase("", item.GetMetadata("DestinationSubDirectory"));
-                    AssertNoCase("", item.GetMetadata("RandomAttributeThatShouldBeForwarded"));
-                    AssertNoCase("true", item.GetMetadata("CopyLocal"));
+                    item.GetMetadata("DestinationSubDirectory").ShouldBe("", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("RandomAttributeThatShouldBeForwarded").ShouldBe("", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("CopyLocal").ShouldBe("true", StringCompareShould.IgnoreCase);
                 }
                 else if (item.ItemSpec.EndsWith(Path.Combine("MyProject", "MyCopyLocalAssembly.dll")))
                 {
                     myCopyLocalAssemblyFound = true;
-                    AssertNoCase("", item.GetMetadata("DestinationSubDirectory"));
-                    AssertNoCase("", item.GetMetadata("RandomAttributeThatShouldBeForwarded"));
-                    AssertNoCase("true", item.GetMetadata("CopyLocal"));
+                    item.GetMetadata("DestinationSubDirectory").ShouldBe("", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("RandomAttributeThatShouldBeForwarded").ShouldBe("", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("CopyLocal").ShouldBe("true", StringCompareShould.IgnoreCase);
                 }
                 else if (item.ItemSpec.EndsWith(Path.Combine("MyProject", "MyDontCopyLocalAssembly.dll")))
                 {
                     myDontCopyLocalAssemblyFound = true;
-                    AssertNoCase("", item.GetMetadata("DestinationSubDirectory"));
-                    AssertNoCase("", item.GetMetadata("RandomAttributeThatShouldBeForwarded"));
-                    AssertNoCase("false", item.GetMetadata("CopyLocal"));
+                    item.GetMetadata("DestinationSubDirectory").ShouldBe("", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("RandomAttributeThatShouldBeForwarded").ShouldBe("", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("CopyLocal").ShouldBe("false", StringCompareShould.IgnoreCase);
                 }
                 else if (item.ItemSpec.EndsWith(s_myMissingAssemblyRelPath))
                 {
                     missingAssemblyFound = true;
-                    AssertNoCase("", item.GetMetadata("DestinationSubDirectory"));
-                    AssertNoCase("", item.GetMetadata("RandomAttributeThatShouldBeForwarded"));
+                    item.GetMetadata("DestinationSubDirectory").ShouldBe("", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("RandomAttributeThatShouldBeForwarded").ShouldBe("", StringCompareShould.IgnoreCase);
 
                     // Its debatable whether this file should be CopyLocal or not.
                     // It doesn't exist on disk, but is it ResolveAssemblyReference's job to make sure that it does?
                     // For now, let the default CopyLocal rules apply.
-                    AssertNoCase("true", item.GetMetadata("CopyLocal"));
-                    AssertNoCase("MyMissingAssembly", item.GetMetadata("FusionName"));
+                    item.GetMetadata("CopyLocal").ShouldBe("true", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("FusionName").ShouldBe("MyMissingAssembly", StringCompareShould.IgnoreCase);
                 }
                 else if (String.Compare(item.ItemSpec, Path.Combine(s_myProjectPath, "System.Xml.dll"), StringComparison.OrdinalIgnoreCase) == 0)
                 {
@@ -544,7 +550,6 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 }
                 else
                 {
-                    Console.WriteLine(item.ItemSpec);
                     Assert.True(false, String.Format("A new resolved file called '{0}' was found. If this is intentional, then add unittests above.", item.ItemSpec));
                 }
             }
@@ -555,27 +560,26 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 if (item.ItemSpec.EndsWith(Path.Combine("v2.0.MyVersion", "SysTem.dll")))
                 {
                     systemFound = true;
-                    AssertNoCase("", item.GetMetadata("DestinationSubDirectory"));
-                    AssertNoCase("", item.GetMetadata("RandomAttributeThatShouldBeForwarded"));
-                    AssertNoCase("false", item.GetMetadata("CopyLocal"));
-                    AssertNoCase("System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", item.GetMetadata("FusionName"));
+                    item.GetMetadata("DestinationSubDirectory").ShouldBe("", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("RandomAttributeThatShouldBeForwarded").ShouldBe("", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("CopyLocal").ShouldBe("false", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("FusionName").ShouldBe("System, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", StringCompareShould.IgnoreCase);
                 }
                 else if (item.ItemSpec.EndsWith(Path.Combine("v2.0.MyVersion", "mscorlib.dll")))
                 {
                     mscorlibFound = true;
-                    AssertNoCase("", item.GetMetadata("DestinationSubDirectory"));
-                    AssertNoCase("1776", item.GetMetadata("RandomAttributeThatShouldBeForwarded"));
-                    AssertNoCase("false", item.GetMetadata("CopyLocal"));
-                    AssertNoCase("v2.0.50727", item.GetMetadata(ItemMetadataNames.imageRuntime));
-                    Assert.Equal(0, item.GetMetadata(ItemMetadataNames.winMDFile).Length);
-                    Assert.Equal(0, item.GetMetadata(ItemMetadataNames.winmdImplmentationFile).Length);
+                    item.GetMetadata("DestinationSubDirectory").ShouldBe("", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("RandomAttributeThatShouldBeForwarded").ShouldBe("1776", StringCompareShould.IgnoreCase);
+                    item.GetMetadata("CopyLocal").ShouldBe("false", StringCompareShould.IgnoreCase);
+                    item.GetMetadata(ItemMetadataNames.imageRuntime).ShouldBe("v2.0.50727", StringCompareShould.IgnoreCase);
+                    Assert.Empty(item.GetMetadata(ItemMetadataNames.winMDFile));
+                    Assert.Empty(item.GetMetadata(ItemMetadataNames.winmdImplmentationFile));
 
                     // Notice how the following doesn't have 'version'. This is because all versions of mscorlib 'unify'
                     Assert.Equal(AssemblyRef.Mscorlib, item.GetMetadata("FusionName"));
                 }
                 else
                 {
-                    Console.WriteLine(item.ItemSpec);
                     Assert.True(false, String.Format("A new dependency called '{0}' was found. If this is intentional, then add unittests above.", item.ItemSpec));
                 }
             }
@@ -583,7 +587,6 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             // Process the related files.
             foreach (ITaskItem item in t.RelatedFiles)
             {
-                Console.WriteLine(item.ItemSpec);
                 Assert.True(false, String.Format("A new dependency called '{0}' was found. If this is intentional, then add unittests above.", item.ItemSpec));
             }
 
@@ -593,20 +596,19 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 if (String.Compare(item.ItemSpec, Path.Combine(s_myVersion20Path, "en", "System.XML.resources.pdb"), StringComparison.OrdinalIgnoreCase) == 0)
                 {
                     enSatellitePdbFound = true;
-                    Assert.Equal(0, item.GetMetadata(ItemMetadataNames.imageRuntime).Length);
-                    Assert.Equal(0, item.GetMetadata(ItemMetadataNames.winMDFile).Length);
-                    Assert.Equal(0, item.GetMetadata(ItemMetadataNames.winmdImplmentationFile).Length);
+                    Assert.Empty(item.GetMetadata(ItemMetadataNames.imageRuntime));
+                    Assert.Empty(item.GetMetadata(ItemMetadataNames.winMDFile));
+                    Assert.Empty(item.GetMetadata(ItemMetadataNames.winmdImplmentationFile));
                 }
                 else if (String.Compare(item.ItemSpec, Path.Combine(s_myVersion20Path, "en-GB", "System.XML.resources.pdb"), StringComparison.OrdinalIgnoreCase) == 0)
                 {
                     engbSatellitePdbFound = true;
-                    Assert.Equal(0, item.GetMetadata(ItemMetadataNames.imageRuntime).Length);
-                    Assert.Equal(0, item.GetMetadata(ItemMetadataNames.winMDFile).Length);
-                    Assert.Equal(0, item.GetMetadata(ItemMetadataNames.winmdImplmentationFile).Length);
+                    Assert.Empty(item.GetMetadata(ItemMetadataNames.imageRuntime));
+                    Assert.Empty(item.GetMetadata(ItemMetadataNames.winMDFile));
+                    Assert.Empty(item.GetMetadata(ItemMetadataNames.winmdImplmentationFile));
                 }
                 else
                 {
-                    Console.WriteLine(item.ItemSpec);
                     Assert.True(false, String.Format("A new dependency called '{0}' was found. If this is intentional, then add unittests above.", item.ItemSpec));
                 }
             }
@@ -648,7 +650,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             string pathForAssembly = this.GetType().Assembly.Location;
 
             string inspectedRuntimeVersion = AssemblyInformation.GetRuntimeVersion(pathForAssembly);
-            Assert.True(imageRuntimeReportedByAsssembly.Equals(inspectedRuntimeVersion, StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(inspectedRuntimeVersion, imageRuntimeReportedByAsssembly);
         }
 
         /// <summary>
@@ -739,7 +741,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             for (int i = 0; i < fxVersions.Length; i++)
             {
                 // Create the engine.
-                MockEngine engine = new MockEngine();
+                MockEngine engine = new MockEngine(_output);
                 // Now, pass feed resolved primary references into ResolveAssemblyReference.
                 ResolveAssemblyReference t = new ResolveAssemblyReference();
                 t.BuildEngine = engine;
@@ -766,14 +768,13 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                         {
                             assembliesFound[j] = true;
                             string assemblyName = Enum.GetName(typeof(EmbedInteropTypes_Indices), j);
-                            AssertNoCase(fxVersion + ": unexpected CopyValue for " + assemblyName, expectedCopyLocal[j, i], copyLocal);
+                            copyLocal.ShouldBe(expectedCopyLocal[j, i], fxVersion + ": unexpected CopyValue for " + assemblyName, StringCompareShould.IgnoreCase);
                             break;
                         }
                     }
 
                     if (j == assembliesCount)
                     {
-                        Console.WriteLine(item.ItemSpec);
                         Assert.True(false, String.Format("{0}: A new resolved file called '{1}' was found. If this is intentional, then add unittests above.", fxVersion, item.ItemSpec));
                     }
                 }
@@ -793,7 +794,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void NOPForEmptyItemLists()
         {
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             // Now, pass feed resolved primary references into ResolveAssemblyReference.
             ResolveAssemblyReference t = new ResolveAssemblyReference();
@@ -813,7 +814,6 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// by default.
         /// </summary>
         [Fact]
-        [Trait("Category", "mono-osx-failing")]
         public void DefaultAllowedRelatedFileExtensionsAreUsed()
         {
             // This WriteLine is a hack.  On a slow machine, the Tasks unittest fails because remoting
@@ -822,12 +822,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Console.WriteLine("Performing Miscellaneous.DefaultRelatedFileExtensionsAreUsed() test");
 
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             // Construct a list of assembly files.
             ITaskItem[] assemblies = new TaskItem[]
             {
-                new TaskItem(@"c:\AssemblyFolder\SomeAssembly.dll")
+                new TaskItem(s_assemblyFolder_SomeAssemblyDllPath)
             };
 
             // Now, pass feed resolved primary references into ResolveAssemblyReference.
@@ -839,8 +839,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.SearchPaths = DefaultPaths;
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            Assert.True(t.ResolvedFiles[0].ItemSpec.EndsWith(@"AssemblyFolder\SomeAssembly.dll"));
+            Assert.Single(t.ResolvedFiles);
+            Assert.EndsWith(Path.Combine("AssemblyFolder", "SomeAssembly.dll"), t.ResolvedFiles[0].ItemSpec);
 
             // Process the related files.
             Assert.Equal(3, t.RelatedFiles.Length);
@@ -851,15 +851,15 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             foreach (ITaskItem item in t.RelatedFiles)
             {
-                if (item.ItemSpec.EndsWith(@"AssemblyFolder\SomeAssembly.pdb"))
+                if (item.ItemSpec.EndsWith(Path.Combine("AssemblyFolder", "SomeAssembly.pdb")))
                 {
                     pdbFound = true;
                 }
-                if (item.ItemSpec.EndsWith(@"AssemblyFolder\SomeAssembly.xml"))
+                if (item.ItemSpec.EndsWith(Path.Combine("AssemblyFolder", "SomeAssembly.xml")))
                 {
                     xmlFound = true;
                 }
-                if (item.ItemSpec.EndsWith(@"AssemblyFolder\SomeAssembly.pri"))
+                if (item.ItemSpec.EndsWith(Path.Combine("AssemblyFolder", "SomeAssembly.pri")))
                 {
                     priFound = true;
                 }
@@ -869,10 +869,50 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         }
 
         /// <summary>
+        /// Externally resolved references do not get their related files identified by RAR. In the common
+        /// nuget assets case, RAR cannot be the one to identify what to copy because RAR sees only the
+        /// compile-time assets and not the runtime assets.
+        /// </summary>
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void RelatedFilesAreNotFoundForExternallyResolvedReferences(bool findDependenciesOfExternallyResolvedReferences)
+        {
+            // This WriteLine is a hack.  On a slow machine, the Tasks unittest fails because remoting
+            // times out the object used for remoting console writes.  Adding a write in the middle of
+            // keeps remoting from timing out the object.
+            Console.WriteLine("Performing Miscellaneous.DefaultRelatedFileExtensionsAreUsed() test");
+
+            // Create the engine.
+            MockEngine engine = new MockEngine(_output);
+
+            // Construct a list of assembly files.
+            ITaskItem[] assemblies = new TaskItem[]
+            {
+                new TaskItem(s_assemblyFolder_SomeAssemblyDllPath)
+            };
+
+            assemblies[0].SetMetadata("ExternallyResolved", "true");
+
+            // Now, pass feed resolved primary references into ResolveAssemblyReference.
+            ResolveAssemblyReference t = new ResolveAssemblyReference();
+
+            t.BuildEngine = engine;
+            t.Assemblies = assemblies;
+            t.TargetFrameworkDirectories = new string[] { s_myVersion20Path };
+            t.SearchPaths = DefaultPaths;
+            t.FindDependenciesOfExternallyResolvedReferences = findDependenciesOfExternallyResolvedReferences; // does not impact related file search
+            Execute(t);
+
+            Assert.Single(t.ResolvedFiles);
+            Assert.EndsWith(Path.Combine("AssemblyFolder", "SomeAssembly.dll"), t.ResolvedFiles[0].ItemSpec);
+            Assert.Empty(t.RelatedFiles);
+        }
+
+        /// <summary>
         /// RAR should use any given related file extensions.
         /// </summary>
         [Fact]
-        [Trait("Category", "mono-osx-failing")]
         public void InputAllowedRelatedFileExtensionsAreUsed()
         {
             // This WriteLine is a hack.  On a slow machine, the Tasks unittest fails because remoting
@@ -881,12 +921,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Console.WriteLine("Performing Miscellaneous.InputRelatedFileExtensionsAreUsed() test");
 
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             // Construct a list of assembly files.
             ITaskItem[] assemblies = new TaskItem[]
             {
-                new TaskItem(@"c:\AssemblyFolder\SomeAssembly.dll")
+                new TaskItem(s_assemblyFolder_SomeAssemblyDllPath)
             };
 
             // Now, pass feed resolved primary references into ResolveAssemblyReference.
@@ -899,8 +939,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.AllowedRelatedFileExtensions = new string[] { @".licenses", ".xml" }; //no .pdb or .config
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            Assert.True(t.ResolvedFiles[0].ItemSpec.EndsWith(@"AssemblyFolder\SomeAssembly.dll"));
+            Assert.Single(t.ResolvedFiles);
+            Assert.EndsWith(Path.Combine("AssemblyFolder", "SomeAssembly.dll"), t.ResolvedFiles[0].ItemSpec);
 
             // Process the related files.
             Assert.Equal(2, t.RelatedFiles.Length);
@@ -909,11 +949,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             bool xmlFound = false;
             foreach (ITaskItem item in t.RelatedFiles)
             {
-                if (item.ItemSpec.EndsWith(@"AssemblyFolder\SomeAssembly.licenses"))
+                if (item.ItemSpec.EndsWith(Path.Combine("AssemblyFolder", "SomeAssembly.licenses")))
                 {
                     licensesFound = true;
                 }
-                if (item.ItemSpec.EndsWith(@"AssemblyFolder\SomeAssembly.xml"))
+                if (item.ItemSpec.EndsWith(Path.Combine("AssemblyFolder", "SomeAssembly.xml")))
                 {
                     xmlFound = true;
                 }
@@ -925,7 +965,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// <summary>
         /// Simulate a CreateProject resolution. This is primarily for IO monitoring.
         /// </summary>
-        public void SimulateCreateProjectAgainstWhidbeyInternal(string fxfolder)
+        private void SimulateCreateProjectAgainstWhidbeyInternal(string fxfolder)
         {
             // This WriteLine is a hack.  On a slow machine, the Tasks unittest fails because remoting
             // times out the object used for remoting console writes.  Adding a write in the middle of
@@ -933,7 +973,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Console.WriteLine("Performing SimulateCreateProjectAgainstWhidbey() test");
 
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             // Now, pass feed resolved primary references into ResolveAssemblyReference.
             ResolveAssemblyReference t = new ResolveAssemblyReference();
@@ -992,7 +1032,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("mscorlib") };
             t.CandidateAssemblyFiles = new string[] { "|" };
@@ -1013,7 +1053,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("mscorlib") };
             t.AssemblyFiles = new ITaskItem[] { new TaskItem("|") };
@@ -1033,7 +1073,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("|!@#$%::") };
 
@@ -1059,7 +1099,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.TargetFrameworkDirectories = new string[] { "\nc:\\blah\\v2.0.1234" };
 
@@ -1079,7 +1119,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("mscorlib") };
             t.SearchPaths = new string[] { "|" };
@@ -1099,7 +1139,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("mscorlib") };
             t.AppConfigFile = "|";
@@ -1119,13 +1159,13 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
             t.Assemblies = new ITaskItem[] {
                 new TaskItem("System.Xml"), new TaskItem("System.Nonexistent")
             };
             t.SearchPaths = new string[] { Path.GetDirectoryName(typeof(object).Module.FullyQualifiedName), "{AssemblyFolders}", "{HintPathFromItem}", "{RawFileName}" };
             t.Execute();
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(0, String.Compare(ToolLocationHelper.GetPathToDotNetFrameworkFile("System.Xml.dll", TargetDotNetFrameworkVersion.Version45), t.ResolvedFiles[0].ItemSpec, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -1151,7 +1191,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
             t.Assemblies = new ITaskItem[]
             {
                 new TaskItem("DependsOnSimpleA")
@@ -1159,8 +1199,33 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             t.SearchPaths = new string[] { s_myAppRootPath, @"c:\MyStronglyNamed", @"c:\MyWeaklyNamed" };
             Execute(t);
-            Assert.Equal(1, t.ResolvedDependencyFiles.Length);
+            Assert.Single(t.ResolvedDependencyFiles);
             Assert.Equal(@"c:\MyWeaklyNamed\A.dll", t.ResolvedDependencyFiles[0].ItemSpec);
+        }
+
+        /// <summary>
+        /// When a reference is marked as externally resolved, it is supposed to have provided
+        /// everything needed as primary references and dependencies are therefore not searched
+        /// as an optimization. This is a contrived case of a dangling dependency off of an
+        /// externally resolved reference, so that we can observe that the dependency search is
+        /// not performed in a test.
+        /// </summary>
+        [Fact]
+        public void DependenciesOfExternallyResolvedReferencesAreNotSearched()
+        {
+            ResolveAssemblyReference t = new ResolveAssemblyReference();
+
+            t.BuildEngine = new MockEngine(_output);
+            t.Assemblies = new ITaskItem[]
+            {
+                new TaskItem("DependsOnSimpleA")
+            };
+
+            t.Assemblies[0].SetMetadata("ExternallyResolved", "true");
+
+            t.SearchPaths = new string[] { s_myAppRootPath, @"c:\MyStronglyNamed", @"c:\MyWeaklyNamed" };
+            Execute(t);
+            Assert.Empty(t.ResolvedDependencyFiles);
         }
 
         /// <summary>
@@ -1178,7 +1243,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             ITaskItem i = new TaskItem("My.Assembly");
 
@@ -1188,7 +1253,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.SearchPaths = DefaultPaths;
             Execute(t);
             Assert.Equal(@"C:\myassemblies\My.Assembly.dll", t.ResolvedFiles[0].ItemSpec);
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
 
             // All attributes, including HintPath, should be forwarded from input to output
             Assert.Equal(@"C:\myassemblies\My.Assembly.dll", t.ResolvedFiles[0].GetMetadata("HintPath"));
@@ -1206,7 +1271,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("mscorlib") };
             t.SearchPaths = new string[]
@@ -1217,7 +1282,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(Path.Combine(s_myVersionPocket20Path, "mscorlib.dll"), t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -1225,42 +1290,42 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// Do the most basic AssemblyFoldersEx resolve.
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExBasic()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("MyGrid") };
             t.SearchPaths = DefaultPaths;
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(@"C:\MyComponents\MyGrid.dll", t.ResolvedFiles[0].ItemSpec);
-            AssertNoCase(@"{Registry:Software\Microsoft\.NetFramework,v2.0,AssemblyFoldersEx}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Microsoft\.NetFramework,v2.0,AssemblyFoldersEx}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
         /// Verify that higher alphabetical values for a component are chosen over lower alphabetic values of a component.
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExVerifyComponentFolderSorting()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("CustomComponent") };
             t.SearchPaths = DefaultPaths;
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(@"C:\MyComponentsB\CustomComponent.dll", t.ResolvedFiles[0].ItemSpec);
-            AssertNoCase(@"{Registry:Software\Microsoft\.NetFramework,v2.0,AssemblyFoldersEx}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Microsoft\.NetFramework,v2.0,AssemblyFoldersEx}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -1268,21 +1333,21 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// with the letter "v", we should tolerate it and treat it as if it does.
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExTargetFrameworkVersionDoesNotBeginWithV()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("MyGrid") };
             t.SearchPaths = new string[] { @"{Registry:Software\Microsoft\.NetFramework,2.0,AssemblyFoldersEx}" };
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(@"C:\MyComponents\MyGrid.dll", t.ResolvedFiles[0].ItemSpec);
-            AssertNoCase(@"{Registry:Software\Microsoft\.NetFramework,2.0,AssemblyFoldersEx}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Microsoft\.NetFramework,2.0,AssemblyFoldersEx}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -1293,11 +1358,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         ///
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExProcessorArchDoesNotMatch()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A") };
@@ -1305,8 +1370,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.TargetProcessorArchitecture = "AMD64";
             Execute(t);
 
-            Assert.Equal(0, t.ResolvedFiles.Length);
-            string message = ResourceUtilities.FormatResourceString("ResolveAssemblyReference.TargetedProcessorArchitectureDoesNotMatch", @"C:\Regress714052\X86\A.dll", "X86", "AMD64");
+            Assert.Empty(t.ResolvedFiles);
+            string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword("ResolveAssemblyReference.TargetedProcessorArchitectureDoesNotMatch", @"C:\Regress714052\X86\A.dll", "X86", "AMD64");
             mockEngine.AssertLogContains(message);
         }
 
@@ -1319,11 +1384,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         ///
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExProcessorArchMSILX86()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A") };
@@ -1332,22 +1397,22 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.WarnOrErrorOnTargetArchitectureMismatch = "None";
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(0, mockEngine.Warnings);
             Assert.Equal(0, mockEngine.Errors);
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,X86}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,X86}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
         /// Verify if there is a mismatch between what the project targets and the architecture of the resolved primary reference log a warning.
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         [Trait("Category", "mono-windows-failing")]
         public void VerifyProcessArchitectureMismatchWarning()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A"), new TaskItem("B") };
@@ -1361,19 +1426,19 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Assert.Equal(0, mockEngine.Errors);
             mockEngine.AssertLogContainsMessageFromResource(resourceDelegate, "ResolveAssemblyReference.MismatchBetweenTargetedAndReferencedArch", "MSIL", @"A", "X86");
             mockEngine.AssertLogContainsMessageFromResource(resourceDelegate, "ResolveAssemblyReference.MismatchBetweenTargetedAndReferencedArch", "MSIL", @"B", "X86");
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,X86}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,X86}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
         /// Verify if there is a mismatch between what the project targets and the architecture of the resolved primary reference log a warning.
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         [Trait("Category", "mono-windows-failing")]
         public void VerifyProcessArchitectureMismatchWarningDefault()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A"), new TaskItem("B") };
@@ -1386,19 +1451,19 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Assert.Equal(0, mockEngine.Errors);
             mockEngine.AssertLogContainsMessageFromResource(resourceDelegate, "ResolveAssemblyReference.MismatchBetweenTargetedAndReferencedArch", "MSIL", @"A", "X86");
             mockEngine.AssertLogContainsMessageFromResource(resourceDelegate, "ResolveAssemblyReference.MismatchBetweenTargetedAndReferencedArch", "MSIL", @"B", "X86");
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,X86}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,X86}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
         /// Verify if there is a mismatch between what the project targets and the architecture of the resolved primary reference log a error.
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         [Trait("Category", "mono-windows-failing")]
         public void VerifyProcessArchitectureMismatchError()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A"), new TaskItem("B") };
@@ -1412,7 +1477,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Assert.Equal(2, mockEngine.Errors);
             mockEngine.AssertLogContainsMessageFromResource(resourceDelegate, "ResolveAssemblyReference.MismatchBetweenTargetedAndReferencedArch", "MSIL", @"A", "X86");
             mockEngine.AssertLogContainsMessageFromResource(resourceDelegate, "ResolveAssemblyReference.MismatchBetweenTargetedAndReferencedArch", "MSIL", @"B", "X86");
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,X86}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,X86}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -1422,11 +1487,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         ///
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExProcessorArchNoneX86()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A") };
@@ -1434,8 +1499,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.TargetProcessorArchitecture = "NONE";
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,X86}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            Assert.Single(t.ResolvedFiles);
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,X86}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -1443,11 +1508,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// has a MSIL architecture or a NONE architecture. NONE means you do not care what architecture is picked.
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExProcessorArchNoneMix()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A") };
@@ -1456,11 +1521,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.WarnOrErrorOnTargetArchitectureMismatch = "Error";  // should not do anything
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(0, mockEngine.Warnings);
             Assert.Equal(0, mockEngine.Errors);
-            Assert.True(t.ResolvedFiles[0].ItemSpec.Equals(@"C:\Regress714052\Mix\a.winmd", StringComparison.OrdinalIgnoreCase));
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,Mix}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            Assert.Equal(@"C:\Regress714052\Mix\a.winmd", t.ResolvedFiles[0].ItemSpec, true);
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,Mix}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -1472,11 +1537,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         ///
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExProcessorArchMSILLastFolder()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A") };
@@ -1484,9 +1549,9 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.TargetProcessorArchitecture = "MSIL";
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            Assert.Equal(t.ResolvedFiles[0].ItemSpec, @"C:\Regress714052\MSIL\A.dll");
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,AssemblyFoldersEX}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            Assert.Single(t.ResolvedFiles);
+            Assert.Equal(@"C:\Regress714052\MSIL\A.dll", t.ResolvedFiles[0].ItemSpec);
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,AssemblyFoldersEX}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -1498,11 +1563,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         ///
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExProcessorArchNoneLastFolder()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A") };
@@ -1510,9 +1575,9 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.TargetProcessorArchitecture = "None";
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            Assert.Equal(t.ResolvedFiles[0].ItemSpec, @"C:\Regress714052\MSIL\A.dll");
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,AssemblyFoldersEX}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            Assert.Single(t.ResolvedFiles);
+            Assert.Equal(@"C:\Regress714052\MSIL\A.dll", t.ResolvedFiles[0].ItemSpec);
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,AssemblyFoldersEX}", StringCompareShould.IgnoreCase);
         }
         /// <summary>
         /// The above but now requires us to make sure the processor architecture of what we are targeting matches what we are resolving.
@@ -1523,11 +1588,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         ///
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExProcessorArchX86FirstFolder()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A") };
@@ -1535,9 +1600,9 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.TargetProcessorArchitecture = "X86";
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            Assert.Equal(t.ResolvedFiles[0].ItemSpec, @"C:\Regress714052\X86\A.dll");
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,AssemblyFoldersEX}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            Assert.Single(t.ResolvedFiles);
+            Assert.Equal(@"C:\Regress714052\X86\A.dll", t.ResolvedFiles[0].ItemSpec);
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,AssemblyFoldersEX}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -1547,11 +1612,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         ///
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExProcessorArchX86MSIL()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A") };
@@ -1559,8 +1624,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.TargetProcessorArchitecture = "X86";
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,MSIL}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            Assert.Single(t.ResolvedFiles);
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,MSIL}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -1570,11 +1635,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         ///
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExProcessorArchX86None()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A") };
@@ -1582,8 +1647,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.TargetProcessorArchitecture = "X86";
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,None}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            Assert.Single(t.ResolvedFiles);
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,None}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -1593,11 +1658,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         ///
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExProcessorArchNoneNone()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A") };
@@ -1605,8 +1670,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.TargetProcessorArchitecture = "None";
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,None}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            Assert.Single(t.ResolvedFiles);
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,None}", StringCompareShould.IgnoreCase);
         }
         /// <summary>
         /// The above but now requires us to make sure the processor architecture of what we are targeting matches what we are resolving.
@@ -1615,11 +1680,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         ///
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExProcessorArcMSILNone()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A") };
@@ -1627,8 +1692,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.TargetProcessorArchitecture = "MSIL";
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,None}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            Assert.Single(t.ResolvedFiles);
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,None}", StringCompareShould.IgnoreCase);
         }
         /// <summary>
         /// The above but now requires us to make sure the processor architecture of what we are targeting matches what we are resolving.
@@ -1637,11 +1702,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         ///
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExProcessorArchNoneMSIL()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A") };
@@ -1649,8 +1714,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.TargetProcessorArchitecture = "None";
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,MSIL}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            Assert.Single(t.ResolvedFiles);
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,MSIL}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -1660,11 +1725,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         ///
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExProcessorArchMSILMSIL()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             t.BuildEngine = mockEngine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A") };
@@ -1672,8 +1737,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.TargetProcessorArchitecture = "MSIL";
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,MSIL}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            Assert.Single(t.ResolvedFiles);
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,MSIL}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -1683,21 +1748,21 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         ///
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExProcessorArchMatches()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("A") };
             t.SearchPaths = new string[] { @"{Registry:Software\Regress714052,v2.0.0,X86}" };
             t.TargetProcessorArchitecture = "X86";
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(@"C:\Regress714052\X86\A.dll", t.ResolvedFiles[0].ItemSpec);
-            AssertNoCase(@"{Registry:Software\Regress714052,v2.0.0,X86}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Regress714052,v2.0.0,X86}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
@@ -1708,12 +1773,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// carry on and inspect those.
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExTargetFrameworkVersionBogusValue()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             ITaskItem assemblyToResolve = new TaskItem("MyGrid");
             assemblyToResolve.SetMetadata("HintPath", @"C:\MyComponents\MyGrid.dll");
@@ -1722,48 +1787,48 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            Assert.True(t.ResolvedFiles[0].GetMetadata("ResolvedFrom").Equals("{HintPathFromItem}", StringComparison.OrdinalIgnoreCase)); //                 "Assembly should have been resolved from HintPathFromItem!"
+            Assert.Single(t.ResolvedFiles);
+            Assert.Equal("{HintPathFromItem}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom")); //                 "Assembly should have been resolved from HintPathFromItem!"
         }
 
         /// <summary>
         /// Tolerate keys like v2.0.x86chk.
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void Regress357227_AssemblyFoldersExAgainstRawDrop()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("MyRawDropControl") };
             t.SearchPaths = DefaultPaths;
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(@"C:\MyRawDropControls\MyRawDropControl.dll", t.ResolvedFiles[0].ItemSpec);
-            AssertNoCase(@"{Registry:Software\Microsoft\.NetFramework,v2.0,AssemblyFoldersEx}", t.ResolvedFiles[0].GetMetadata("ResolvedFrom"));
+            t.ResolvedFiles[0].GetMetadata("ResolvedFrom").ShouldBe(@"{Registry:Software\Microsoft\.NetFramework,v2.0,AssemblyFoldersEx}", StringCompareShould.IgnoreCase);
         }
 
         /// <summary>
         /// Matches that exist only in the HKLM hive.
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExHKLM()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("MyHKLMControl") };
             t.SearchPaths = DefaultPaths;
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(@"C:\MyComponents\HKLM Components\MyHKLMControl.dll", t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -1771,7 +1836,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// Matches that exist in both HKLM and HKCU should favor HKCU
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExHKCUTrumpsHKLM()
         {
             // This WriteLine is a hack.  On a slow machine, the Tasks unittest fails because remoting
@@ -1781,14 +1846,14 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("MyHKLMandHKCUControl") };
             t.SearchPaths = DefaultPaths;
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(@"C:\MyComponents\HKCU Components\MyHKLMandHKCUControl.dll", t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -1796,19 +1861,19 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// When matches that have v3.0 (future) and v2.0 (current) versions, the 2.0 version wins.
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExFutureTargetNDPVersionsDontMatch()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("MyControlWithFutureTargetNDPVersion") };
             t.SearchPaths = DefaultPaths;
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(Path.Combine(s_myComponentsV20Path, "MyControlWithFutureTargetNDPVersion.dll"), t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -1816,19 +1881,19 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// If there is no v2.0 (current target NDP) match, then v1.0 should match.
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExMatchBackVersion()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("MyNDP1Control") };
             t.SearchPaths = DefaultPaths;
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(Path.Combine(s_myComponentsV10Path, "MyNDP1Control.dll"), t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -1836,19 +1901,19 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// If there is a 2.0 and a 1.0 then match 2.0.
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExCurrentTargetVersionTrumpsPastTargetVersion()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("MyControlWithPastTargetNDPVersion") };
             t.SearchPaths = DefaultPaths;
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(Path.Combine(s_myComponentsV20Path, "MyControlWithPastTargetNDPVersion.dll"), t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -1856,19 +1921,19 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// If a control has a service pack then that wins over the control itself
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExServicePackTrumpsBaseVersion()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("MyControlWithServicePack") };
             t.SearchPaths = DefaultPaths;
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(@"C:\MyComponentServicePack2\MyControlWithServicePack.dll", t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -1877,7 +1942,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// Test MaxOSVersion condition
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExConditionFilterMaxOS()
         {
             // This WriteLine is a hack.  On a slow machine, the Tasks unittest fails because remoting
@@ -1887,7 +1952,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("MyDeviceControlAssembly") };
             t.SearchPaths = new string[]
@@ -1912,7 +1977,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 RemoveAssemblyFoldersExTestConditionRegistryKey();
             }
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(@"C:\V1ControlSP1\MyDeviceControlAssembly.dll", t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -1921,12 +1986,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// Test MinOSVersion condition
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExConditionFilterMinOS()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("MyDeviceControlAssembly") };
             t.SearchPaths = new string[]
@@ -1951,10 +2016,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 RemoveAssemblyFoldersExTestConditionRegistryKey();
             }
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(@"C:\V1Control\MyDeviceControlAssembly.dll", t.ResolvedFiles[0].ItemSpec);
         }
 
+#if FEATURE_WIN32_REGISTRY
         [Fact]
         public void GatherVersions10DotNet()
         {
@@ -1962,9 +2028,9 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.NotNull(returnedVersions);
             Assert.Equal(3, returnedVersions.Count);
-            Assert.True(((string)returnedVersions[0].RegistryKey).Equals("v1.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[1].RegistryKey).Equals("v1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[2].RegistryKey).Equals("v00001.0", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("v1.0", ((string)returnedVersions[0].RegistryKey));
+            Assert.Equal("v1", ((string)returnedVersions[1].RegistryKey));
+            Assert.Equal("v00001.0", ((string)returnedVersions[2].RegistryKey));
         }
 
         [Fact]
@@ -1974,10 +2040,10 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.NotNull(returnedVersions);
             Assert.Equal(4, returnedVersions.Count);
-            Assert.True(((string)returnedVersions[0].RegistryKey).Equals("v2.0.50727", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[1].RegistryKey).Equals("v1.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[2].RegistryKey).Equals("v1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[3].RegistryKey).Equals("v00001.0", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("v2.0.50727", ((string)returnedVersions[0].RegistryKey));
+            Assert.Equal("v1.0", ((string)returnedVersions[1].RegistryKey));
+            Assert.Equal("v1", ((string)returnedVersions[2].RegistryKey));
+            Assert.Equal("v00001.0", ((string)returnedVersions[3].RegistryKey));
         }
 
         [Fact]
@@ -1988,13 +2054,13 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Assert.NotNull(returnedVersions);
             Assert.Equal(7, returnedVersions.Count);
 
-            Assert.True(((string)returnedVersions[0].RegistryKey).Equals("v3.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[1].RegistryKey).Equals("v2.0.50727", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[2].RegistryKey).Equals("v1.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[3].RegistryKey).Equals("v1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[4].RegistryKey).Equals("v00001.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[5].RegistryKey).Equals("v3.0SP1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[6].RegistryKey).Equals("v3.0 BAZ", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("v3.0", ((string)returnedVersions[0].RegistryKey));
+            Assert.Equal("v2.0.50727", ((string)returnedVersions[1].RegistryKey));
+            Assert.Equal("v1.0", ((string)returnedVersions[2].RegistryKey));
+            Assert.Equal("v1", ((string)returnedVersions[3].RegistryKey));
+            Assert.Equal("v00001.0", ((string)returnedVersions[4].RegistryKey));
+            Assert.Equal("v3.0SP1", ((string)returnedVersions[5].RegistryKey));
+            Assert.Equal("v3.0 BAZ", ((string)returnedVersions[6].RegistryKey));
         }
 
         [Fact]
@@ -2005,33 +2071,33 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Assert.NotNull(returnedVersions);
             Assert.Equal(27, returnedVersions.Count);
 
-            Assert.True(((string)returnedVersions[0].RegistryKey).Equals("v5.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[1].RegistryKey).Equals("v5", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[2].RegistryKey).Equals("v4.0001.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[3].RegistryKey).Equals("v4.1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[4].RegistryKey).Equals("v4.0.255.87", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[5].RegistryKey).Equals("v4.0.255", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[6].RegistryKey).Equals("v4.0.0000", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[7].RegistryKey).Equals("v4.0.9999", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[8].RegistryKey).Equals("v4.0.2116.87", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[9].RegistryKey).Equals("v4.0.2116", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[10].RegistryKey).Equals("v4.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[11].RegistryKey).Equals("v3.5", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[12].RegistryKey).Equals("v3.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[13].RegistryKey).Equals("v2.0.50727", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[14].RegistryKey).Equals("v1.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[15].RegistryKey).Equals("v1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[16].RegistryKey).Equals("v00001.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[17].RegistryKey).Equals("v3.0SP1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[18].RegistryKey).Equals("v3.0 BAZ", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[19].RegistryKey).Equals("v3.5.0.x86chk", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[20].RegistryKey).Equals("v3.5.1.x86chk", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[21].RegistryKey).Equals("v3.5.256.x86chk", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[22].RegistryKey).Equals("v", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[23].RegistryKey).Equals("V3.5.0.0.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[24].RegistryKey).Equals("V3..", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[25].RegistryKey).Equals("V-1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[26].RegistryKey).Equals("v9999999999999999", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("v5.0", ((string)returnedVersions[0].RegistryKey));
+            Assert.Equal("v5", ((string)returnedVersions[1].RegistryKey));
+            Assert.Equal("v4.0001.0", ((string)returnedVersions[2].RegistryKey));
+            Assert.Equal("v4.1", ((string)returnedVersions[3].RegistryKey));
+            Assert.Equal("v4.0.255.87", ((string)returnedVersions[4].RegistryKey));
+            Assert.Equal("v4.0.255", ((string)returnedVersions[5].RegistryKey));
+            Assert.Equal("v4.0.0000", ((string)returnedVersions[6].RegistryKey));
+            Assert.Equal("v4.0.9999", ((string)returnedVersions[7].RegistryKey));
+            Assert.Equal("v4.0.2116.87", ((string)returnedVersions[8].RegistryKey));
+            Assert.Equal("v4.0.2116", ((string)returnedVersions[9].RegistryKey));
+            Assert.Equal("v4.0", ((string)returnedVersions[10].RegistryKey));
+            Assert.Equal("v3.5", ((string)returnedVersions[11].RegistryKey));
+            Assert.Equal("v3.0", ((string)returnedVersions[12].RegistryKey));
+            Assert.Equal("v2.0.50727", ((string)returnedVersions[13].RegistryKey));
+            Assert.Equal("v1.0", ((string)returnedVersions[14].RegistryKey));
+            Assert.Equal("v1", ((string)returnedVersions[15].RegistryKey));
+            Assert.Equal("v00001.0", ((string)returnedVersions[16].RegistryKey));
+            Assert.Equal("v3.0SP1", ((string)returnedVersions[17].RegistryKey));
+            Assert.Equal("v3.0 BAZ", ((string)returnedVersions[18].RegistryKey));
+            Assert.Equal("v3.5.0.x86chk", ((string)returnedVersions[19].RegistryKey));
+            Assert.Equal("v3.5.1.x86chk", ((string)returnedVersions[20].RegistryKey));
+            Assert.Equal("v3.5.256.x86chk", ((string)returnedVersions[21].RegistryKey));
+            Assert.Equal("v", ((string)returnedVersions[22].RegistryKey));
+            Assert.Equal("V3.5.0.0.0", ((string)returnedVersions[23].RegistryKey));
+            Assert.Equal("V3..", ((string)returnedVersions[24].RegistryKey));
+            Assert.Equal("V-1", ((string)returnedVersions[25].RegistryKey));
+            Assert.Equal("v9999999999999999", ((string)returnedVersions[26].RegistryKey), true);
         }
 
         [Fact]
@@ -2041,16 +2107,16 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.NotNull(returnedVersions);
             Assert.Equal(10, returnedVersions.Count);
-            Assert.True(((string)returnedVersions[0].RegistryKey).Equals("v3.5", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[1].RegistryKey).Equals("v3.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[2].RegistryKey).Equals("v2.0.50727", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[3].RegistryKey).Equals("v1.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[4].RegistryKey).Equals("v1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[5].RegistryKey).Equals("v00001.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[6].RegistryKey).Equals("v3.5.0.x86chk", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[7].RegistryKey).Equals("v3.5.1.x86chk", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[8].RegistryKey).Equals("v3.5.256.x86chk", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[9].RegistryKey).Equals("V3.5.0.0.0", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("v3.5", ((string)returnedVersions[0].RegistryKey));
+            Assert.Equal("v3.0", ((string)returnedVersions[1].RegistryKey));
+            Assert.Equal("v2.0.50727", ((string)returnedVersions[2].RegistryKey));
+            Assert.Equal("v1.0", ((string)returnedVersions[3].RegistryKey));
+            Assert.Equal("v1", ((string)returnedVersions[4].RegistryKey));
+            Assert.Equal("v00001.0", ((string)returnedVersions[5].RegistryKey));
+            Assert.Equal("v3.5.0.x86chk", ((string)returnedVersions[6].RegistryKey));
+            Assert.Equal("v3.5.1.x86chk", ((string)returnedVersions[7].RegistryKey));
+            Assert.Equal("v3.5.256.x86chk", ((string)returnedVersions[8].RegistryKey));
+            Assert.Equal("V3.5.0.0.0", ((string)returnedVersions[9].RegistryKey));
         }
 
         [Fact]
@@ -2060,16 +2126,16 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.NotNull(returnedVersions);
             Assert.Equal(10, returnedVersions.Count);
-            Assert.True(((string)returnedVersions[0].RegistryKey).Equals("v4.0.9999", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[1].RegistryKey).Equals("v4.0.2116.87", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[2].RegistryKey).Equals("v4.0.2116", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[3].RegistryKey).Equals("v4.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[4].RegistryKey).Equals("v3.5", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[5].RegistryKey).Equals("v3.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[6].RegistryKey).Equals("v2.0.50727", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[7].RegistryKey).Equals("v1.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[8].RegistryKey).Equals("v1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[9].RegistryKey).Equals("v00001.0", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("v4.0.9999", ((string)returnedVersions[0].RegistryKey));
+            Assert.Equal("v4.0.2116.87", ((string)returnedVersions[1].RegistryKey));
+            Assert.Equal("v4.0.2116", ((string)returnedVersions[2].RegistryKey));
+            Assert.Equal("v4.0", ((string)returnedVersions[3].RegistryKey));
+            Assert.Equal("v3.5", ((string)returnedVersions[4].RegistryKey));
+            Assert.Equal("v3.0", ((string)returnedVersions[5].RegistryKey));
+            Assert.Equal("v2.0.50727", ((string)returnedVersions[6].RegistryKey));
+            Assert.Equal("v1.0", ((string)returnedVersions[7].RegistryKey));
+            Assert.Equal("v1", ((string)returnedVersions[8].RegistryKey));
+            Assert.Equal("v00001.0", ((string)returnedVersions[9].RegistryKey));
         }
 
         [Fact]
@@ -2079,17 +2145,17 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.NotNull(returnedVersions);
             Assert.Equal(11, returnedVersions.Count);
-            Assert.True(((string)returnedVersions[0].RegistryKey).Equals("v4.0.0000", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[1].RegistryKey).Equals("v4.0.9999", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[2].RegistryKey).Equals("v4.0.2116.87", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[3].RegistryKey).Equals("v4.0.2116", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[4].RegistryKey).Equals("v4.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[5].RegistryKey).Equals("v3.5", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[6].RegistryKey).Equals("v3.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[7].RegistryKey).Equals("v2.0.50727", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[8].RegistryKey).Equals("v1.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[9].RegistryKey).Equals("v1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[10].RegistryKey).Equals("v00001.0", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("v4.0.0000", ((string)returnedVersions[0].RegistryKey));
+            Assert.Equal("v4.0.9999", ((string)returnedVersions[1].RegistryKey));
+            Assert.Equal("v4.0.2116.87", ((string)returnedVersions[2].RegistryKey));
+            Assert.Equal("v4.0.2116", ((string)returnedVersions[3].RegistryKey));
+            Assert.Equal("v4.0", ((string)returnedVersions[4].RegistryKey));
+            Assert.Equal("v3.5", ((string)returnedVersions[5].RegistryKey));
+            Assert.Equal("v3.0", ((string)returnedVersions[6].RegistryKey));
+            Assert.Equal("v2.0.50727", ((string)returnedVersions[7].RegistryKey));
+            Assert.Equal("v1.0", ((string)returnedVersions[8].RegistryKey));
+            Assert.Equal("v1", ((string)returnedVersions[9].RegistryKey));
+            Assert.Equal("v00001.0", ((string)returnedVersions[10].RegistryKey));
         }
 
         [Fact]
@@ -2100,20 +2166,20 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Assert.NotNull(returnedVersions);
             Assert.Equal(14, returnedVersions.Count);
 
-            Assert.True(((string)returnedVersions[0].RegistryKey).Equals("v4.1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[1].RegistryKey).Equals("v4.0.255.87", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[2].RegistryKey).Equals("v4.0.255", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[3].RegistryKey).Equals("v4.0.0000", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[4].RegistryKey).Equals("v4.0.9999", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[5].RegistryKey).Equals("v4.0.2116.87", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[6].RegistryKey).Equals("v4.0.2116", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[7].RegistryKey).Equals("v4.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[8].RegistryKey).Equals("v3.5", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[9].RegistryKey).Equals("v3.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[10].RegistryKey).Equals("v2.0.50727", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[11].RegistryKey).Equals("v1.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[12].RegistryKey).Equals("v1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[13].RegistryKey).Equals("v00001.0", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("v4.1", ((string)returnedVersions[0].RegistryKey));
+            Assert.Equal("v4.0.255.87", ((string)returnedVersions[1].RegistryKey));
+            Assert.Equal("v4.0.255", ((string)returnedVersions[2].RegistryKey));
+            Assert.Equal("v4.0.0000", ((string)returnedVersions[3].RegistryKey));
+            Assert.Equal("v4.0.9999", ((string)returnedVersions[4].RegistryKey));
+            Assert.Equal("v4.0.2116.87", ((string)returnedVersions[5].RegistryKey));
+            Assert.Equal("v4.0.2116", ((string)returnedVersions[6].RegistryKey));
+            Assert.Equal("v4.0", ((string)returnedVersions[7].RegistryKey));
+            Assert.Equal("v3.5", ((string)returnedVersions[8].RegistryKey));
+            Assert.Equal("v3.0", ((string)returnedVersions[9].RegistryKey));
+            Assert.Equal("v2.0.50727", ((string)returnedVersions[10].RegistryKey));
+            Assert.Equal("v1.0", ((string)returnedVersions[11].RegistryKey));
+            Assert.Equal("v1", ((string)returnedVersions[12].RegistryKey));
+            Assert.Equal("v00001.0", ((string)returnedVersions[13].RegistryKey));
         }
 
         [Fact]
@@ -2124,21 +2190,21 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Assert.NotNull(returnedVersions);
             Assert.Equal(15, returnedVersions.Count);
 
-            Assert.True(((string)returnedVersions[0].RegistryKey).Equals("v4.0001.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[1].RegistryKey).Equals("v4.1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[2].RegistryKey).Equals("v4.0.255.87", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[3].RegistryKey).Equals("v4.0.255", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[4].RegistryKey).Equals("v4.0.0000", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[5].RegistryKey).Equals("v4.0.9999", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[6].RegistryKey).Equals("v4.0.2116.87", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[7].RegistryKey).Equals("v4.0.2116", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[8].RegistryKey).Equals("v4.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[9].RegistryKey).Equals("v3.5", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[10].RegistryKey).Equals("v3.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[11].RegistryKey).Equals("v2.0.50727", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[12].RegistryKey).Equals("v1.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[13].RegistryKey).Equals("v1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[14].RegistryKey).Equals("v00001.0", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("v4.0001.0", ((string)returnedVersions[0].RegistryKey));
+            Assert.Equal("v4.1", ((string)returnedVersions[1].RegistryKey));
+            Assert.Equal("v4.0.255.87", ((string)returnedVersions[2].RegistryKey));
+            Assert.Equal("v4.0.255", ((string)returnedVersions[3].RegistryKey));
+            Assert.Equal("v4.0.0000", ((string)returnedVersions[4].RegistryKey));
+            Assert.Equal("v4.0.9999", ((string)returnedVersions[5].RegistryKey));
+            Assert.Equal("v4.0.2116.87", ((string)returnedVersions[6].RegistryKey));
+            Assert.Equal("v4.0.2116", ((string)returnedVersions[7].RegistryKey));
+            Assert.Equal("v4.0", ((string)returnedVersions[8].RegistryKey));
+            Assert.Equal("v3.5", ((string)returnedVersions[9].RegistryKey));
+            Assert.Equal("v3.0", ((string)returnedVersions[10].RegistryKey));
+            Assert.Equal("v2.0.50727", ((string)returnedVersions[11].RegistryKey));
+            Assert.Equal("v1.0", ((string)returnedVersions[12].RegistryKey));
+            Assert.Equal("v1", ((string)returnedVersions[13].RegistryKey));
+            Assert.Equal("v00001.0", ((string)returnedVersions[14].RegistryKey));
         }
 
 
@@ -2149,19 +2215,19 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.NotNull(returnedVersions);
             Assert.Equal(13, returnedVersions.Count);
-            Assert.True(((string)returnedVersions[0].RegistryKey).Equals("v4.0.255.87", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[1].RegistryKey).Equals("v4.0.255", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[2].RegistryKey).Equals("v4.0.0000", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[3].RegistryKey).Equals("v4.0.9999", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[4].RegistryKey).Equals("v4.0.2116.87", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[5].RegistryKey).Equals("v4.0.2116", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[6].RegistryKey).Equals("v4.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[7].RegistryKey).Equals("v3.5", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[8].RegistryKey).Equals("v3.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[9].RegistryKey).Equals("v2.0.50727", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[10].RegistryKey).Equals("v1.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[11].RegistryKey).Equals("v1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[12].RegistryKey).Equals("v00001.0", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("v4.0.255.87", ((string)returnedVersions[0].RegistryKey));
+            Assert.Equal("v4.0.255", ((string)returnedVersions[1].RegistryKey));
+            Assert.Equal("v4.0.0000", ((string)returnedVersions[2].RegistryKey));
+            Assert.Equal("v4.0.9999", ((string)returnedVersions[3].RegistryKey));
+            Assert.Equal("v4.0.2116.87", ((string)returnedVersions[4].RegistryKey));
+            Assert.Equal("v4.0.2116", ((string)returnedVersions[5].RegistryKey));
+            Assert.Equal("v4.0", ((string)returnedVersions[6].RegistryKey));
+            Assert.Equal("v3.5", ((string)returnedVersions[7].RegistryKey));
+            Assert.Equal("v3.0", ((string)returnedVersions[8].RegistryKey));
+            Assert.Equal("v2.0.50727", ((string)returnedVersions[9].RegistryKey));
+            Assert.Equal("v1.0", ((string)returnedVersions[10].RegistryKey));
+            Assert.Equal("v1", ((string)returnedVersions[11].RegistryKey));
+            Assert.Equal("v00001.0", ((string)returnedVersions[12].RegistryKey));
         }
 
         [Fact]
@@ -2172,23 +2238,23 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Assert.NotNull(returnedVersions);
             Assert.Equal(17, returnedVersions.Count);
 
-            Assert.True(((string)returnedVersions[0].RegistryKey).Equals("v5.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[1].RegistryKey).Equals("v5", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[2].RegistryKey).Equals("v4.0001.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[3].RegistryKey).Equals("v4.1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[4].RegistryKey).Equals("v4.0.255.87", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[5].RegistryKey).Equals("v4.0.255", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[6].RegistryKey).Equals("v4.0.0000", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[7].RegistryKey).Equals("v4.0.9999", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[8].RegistryKey).Equals("v4.0.2116.87", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[9].RegistryKey).Equals("v4.0.2116", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[10].RegistryKey).Equals("v4.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[11].RegistryKey).Equals("v3.5", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[12].RegistryKey).Equals("v3.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[13].RegistryKey).Equals("v2.0.50727", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[14].RegistryKey).Equals("v1.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[15].RegistryKey).Equals("v1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[16].RegistryKey).Equals("v00001.0", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("v5.0", ((string)returnedVersions[0].RegistryKey));
+            Assert.Equal("v5", ((string)returnedVersions[1].RegistryKey));
+            Assert.Equal("v4.0001.0", ((string)returnedVersions[2].RegistryKey));
+            Assert.Equal("v4.1", ((string)returnedVersions[3].RegistryKey));
+            Assert.Equal("v4.0.255.87", ((string)returnedVersions[4].RegistryKey));
+            Assert.Equal("v4.0.255", ((string)returnedVersions[5].RegistryKey));
+            Assert.Equal("v4.0.0000", ((string)returnedVersions[6].RegistryKey));
+            Assert.Equal("v4.0.9999", ((string)returnedVersions[7].RegistryKey));
+            Assert.Equal("v4.0.2116.87", ((string)returnedVersions[8].RegistryKey));
+            Assert.Equal("v4.0.2116", ((string)returnedVersions[9].RegistryKey));
+            Assert.Equal("v4.0", ((string)returnedVersions[10].RegistryKey));
+            Assert.Equal("v3.5", ((string)returnedVersions[11].RegistryKey));
+            Assert.Equal("v3.0", ((string)returnedVersions[12].RegistryKey));
+            Assert.Equal("v2.0.50727", ((string)returnedVersions[13].RegistryKey));
+            Assert.Equal("v1.0", ((string)returnedVersions[14].RegistryKey));
+            Assert.Equal("v1", ((string)returnedVersions[15].RegistryKey));
+            Assert.Equal("v00001.0", ((string)returnedVersions[16].RegistryKey));
         }
 
         [Fact]
@@ -2199,23 +2265,23 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Assert.NotNull(returnedVersions);
             Assert.Equal(17, returnedVersions.Count);
 
-            Assert.True(((string)returnedVersions[0].RegistryKey).Equals("v5.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[1].RegistryKey).Equals("v5", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[2].RegistryKey).Equals("v4.0001.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[3].RegistryKey).Equals("v4.1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[4].RegistryKey).Equals("v4.0.255.87", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[5].RegistryKey).Equals("v4.0.255", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[6].RegistryKey).Equals("v4.0.0000", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[7].RegistryKey).Equals("v4.0.9999", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[8].RegistryKey).Equals("v4.0.2116.87", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[9].RegistryKey).Equals("v4.0.2116", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[10].RegistryKey).Equals("v4.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[11].RegistryKey).Equals("v3.5", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[12].RegistryKey).Equals("v3.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[13].RegistryKey).Equals("v2.0.50727", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[14].RegistryKey).Equals("v1.0", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[15].RegistryKey).Equals("v1", StringComparison.OrdinalIgnoreCase));
-            Assert.True(((string)returnedVersions[16].RegistryKey).Equals("v00001.0", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("v5.0", ((string)returnedVersions[0].RegistryKey));
+            Assert.Equal("v5", ((string)returnedVersions[1].RegistryKey));
+            Assert.Equal("v4.0001.0", ((string)returnedVersions[2].RegistryKey));
+            Assert.Equal("v4.1", ((string)returnedVersions[3].RegistryKey));
+            Assert.Equal("v4.0.255.87", ((string)returnedVersions[4].RegistryKey));
+            Assert.Equal("v4.0.255", ((string)returnedVersions[5].RegistryKey));
+            Assert.Equal("v4.0.0000", ((string)returnedVersions[6].RegistryKey));
+            Assert.Equal("v4.0.9999", ((string)returnedVersions[7].RegistryKey));
+            Assert.Equal("v4.0.2116.87", ((string)returnedVersions[8].RegistryKey));
+            Assert.Equal("v4.0.2116", ((string)returnedVersions[9].RegistryKey));
+            Assert.Equal("v4.0", ((string)returnedVersions[10].RegistryKey));
+            Assert.Equal("v3.5", ((string)returnedVersions[11].RegistryKey));
+            Assert.Equal("v3.0", ((string)returnedVersions[12].RegistryKey));
+            Assert.Equal("v2.0.50727", ((string)returnedVersions[13].RegistryKey));
+            Assert.Equal("v1.0", ((string)returnedVersions[14].RegistryKey));
+            Assert.Equal("v1", ((string)returnedVersions[15].RegistryKey));
+            Assert.Equal("v00001.0", ((string)returnedVersions[16].RegistryKey));
         }
 
         [Fact]
@@ -2224,22 +2290,23 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             List<ExtensionFoldersRegistryKey> returnedVersions = AssemblyFoldersEx.GatherVersionStrings("v3.5.0.x86chk", s_assemblyFolderExTestVersions);
 
             Assert.NotNull(returnedVersions);
-            Assert.Equal(1, returnedVersions.Count);
+            Assert.Single(returnedVersions);
 
-            Assert.True(((string)returnedVersions[0].RegistryKey).Equals("v3.5.0.x86chk", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("v3.5.0.x86chk", ((string)returnedVersions[0].RegistryKey));
         }
+#endif
 
         /// <summary>
         /// Conditions (OSVersion/Platform) can be passed in SearchPaths to filter the result.
         /// Test Platform condition
         /// </summary>
         [Fact]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         public void AssemblyFoldersExConditionFilterPlatform()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("MyDeviceControlAssembly") };
             t.SearchPaths = new string[]
@@ -2264,7 +2331,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 RemoveAssemblyFoldersExTestConditionRegistryKey();
             }
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(@"C:\V1Control\MyDeviceControlAssembly.dll", t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -2315,7 +2382,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("System.XML") };
             t.SearchPaths = new string[] { "{CandidateAssemblyFiles}" };
@@ -2323,7 +2390,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(Path.Combine(s_myVersion20Path, "System.Xml.dll"), t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -2336,7 +2403,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
             TaskItem item = new TaskItem("System.XML");
             item.SetMetadata("RequiredTargetFramework", "v4.0.255");
             t.Assemblies = new ITaskItem[] { item };
@@ -2345,7 +2412,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.TargetFrameworkVersion = "v4.0";
             Execute(t);
 
-            Assert.Equal(0, t.ResolvedFiles.Length);
+            Assert.Empty(t.ResolvedFiles);
         }
 
         /// <summary>
@@ -2356,7 +2423,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
             TaskItem item = new TaskItem("System.XML");
             item.SetMetadata("RequiredTargetFramework", "v4.0.255");
             t.Assemblies = new ITaskItem[] { item };
@@ -2365,7 +2432,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.TargetFrameworkVersion = "v4.0.256";
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(Path.Combine(s_myVersion20Path, "System.Xml.dll"), t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -2377,7 +2444,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
             t.BuildEngine = engine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("System.XML") };
@@ -2392,7 +2459,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             bool succeeded = Execute(t);
 
             Assert.True(succeeded);
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(Path.Combine(s_myVersion20Path, "System.Xml.dll"), t.ResolvedFiles[0].ItemSpec);
 
             // For {CandidateAssemblyFiles} we don't even want to see a comment logged for files with non-standard extensions.
@@ -2424,7 +2491,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem(Path.Combine(s_myVersion20Path, "System.Xml.dll")) };
             t.SearchPaths = new string[]
@@ -2441,7 +2508,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(Path.Combine(s_myVersion20Path, "System.Xml.dll"), t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -2473,8 +2540,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 List<Exception> errors = new List<Exception>();
                 List<string> errorFileNames = new List<string>();
                 RedistList.ReadFile(info, assembliesReadIn, errors, errorFileNames, null);
-                Assert.Equal(0, errors.Count); // "Expected no Errors"
-                Assert.Equal(0, errorFileNames.Count); // "Expected no Error file names"
+                Assert.Empty(errors); // "Expected no Errors"
+                Assert.Empty(errorFileNames); // "Expected no Error file names"
                 Assert.Equal(4, assembliesReadIn.Count);
             }
             finally
@@ -2627,8 +2694,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 List<Exception> errors = new List<Exception>();
                 List<string> errorFileNames = new List<string>();
                 RedistList.ReadFile(info, assembliesReadIn, errors, errorFileNames, remapEntries);
-                Assert.Equal(0, errors.Count); // "Expected no Errors"
-                Assert.Equal(0, errorFileNames.Count); // "Expected no Error file names"
+                Assert.Empty(errors); // "Expected no Errors"
+                Assert.Empty(errorFileNames); // "Expected no Error file names"
                 Assert.Equal(assembliesReadIn.Count, numberOfExpectedEntries);
                 Assert.Equal(remapEntries.Count, numberofExpectedRemapEntries);
             }
@@ -2664,13 +2731,13 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 List<Exception> errors = new List<Exception>();
                 List<string> errorFileNames = new List<string>();
                 RedistList.ReadFile(info, assembliesReadIn, errors, errorFileNames, remap);
-                Assert.Equal(0, errors.Count); // "Expected no Errors"
-                Assert.Equal(0, errorFileNames.Count); // "Expected no Error file names"
-                Assert.Equal(1, remap.Count);
+                Assert.Empty(errors); // "Expected no Errors"
+                Assert.Empty(errorFileNames); // "Expected no Error file names"
+                Assert.Single(remap);
 
                 AssemblyRemapping pair = remap[0];
-                Assert.True(pair.From.Name.Equals("System.Xml", StringComparison.OrdinalIgnoreCase));
-                Assert.True(pair.To.Name.Equals("Remapped", StringComparison.OrdinalIgnoreCase));
+                Assert.Equal("System.Xml", pair.From.Name);
+                Assert.Equal("Remapped", pair.To.Name);
                 Assert.True(pair.From.Retargetable);
                 Assert.False(pair.To.Retargetable);
             }
@@ -2705,13 +2772,13 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 List<Exception> errors = new List<Exception>();
                 List<string> errorFileNames = new List<string>();
                 RedistList.ReadFile(info, assembliesReadIn, errors, errorFileNames, remap);
-                Assert.Equal(0, errors.Count); // "Expected no Errors"
-                Assert.Equal(0, errorFileNames.Count); // "Expected no Error file names"
-                Assert.Equal(1, remap.Count);
+                Assert.Empty(errors); // "Expected no Errors"
+                Assert.Empty(errorFileNames); // "Expected no Error file names"
+                Assert.Single(remap);
 
                 AssemblyRemapping pair = remap.First<AssemblyRemapping>();
-                Assert.True(pair.From.Name.Equals("System.Xml", StringComparison.OrdinalIgnoreCase));
-                Assert.True(pair.To.Name.Equals("Remapped", StringComparison.OrdinalIgnoreCase));
+                Assert.Equal("System.Xml", pair.From.Name);
+                Assert.Equal("Remapped", pair.To.Name);
                 Assert.True(pair.From.Retargetable);
                 Assert.False(pair.To.Retargetable);
             }
@@ -2748,13 +2815,13 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 List<Exception> errors = new List<Exception>();
                 List<string> errorFileNames = new List<string>();
                 RedistList.ReadFile(info, assembliesReadIn, errors, errorFileNames, remap);
-                Assert.Equal(0, errors.Count); // "Expected no Errors"
-                Assert.Equal(0, errorFileNames.Count); // "Expected no Error file names"
+                Assert.Empty(errors); // "Expected no Errors"
+                Assert.Empty(errorFileNames); // "Expected no Error file names"
                 Assert.Equal(2, remap.Count);
 
                 foreach (AssemblyRemapping pair in remap)
                 {
-                    Assert.True(pair.To.Name.Equals("Remapped", StringComparison.OrdinalIgnoreCase));
+                    Assert.Equal("Remapped", pair.To.Name);
                     Assert.False(pair.To.Retargetable);
                 }
             }
@@ -2791,13 +2858,13 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 List<Exception> errors = new List<Exception>();
                 List<string> errorFileNames = new List<string>();
                 RedistList.ReadFile(info, assembliesReadIn, errors, errorFileNames, remap);
-                Assert.Equal(0, errors.Count); // "Expected no Errors"
-                Assert.Equal(0, errorFileNames.Count); // "Expected no Error file names"
-                Assert.Equal(1, remap.Count);
+                Assert.Empty(errors); // "Expected no Errors"
+                Assert.Empty(errorFileNames); // "Expected no Error file names"
+                Assert.Single(remap);
 
 
                 AssemblyRemapping pair = remap.First<AssemblyRemapping>();
-                Assert.True(pair.To.Name.Equals("Remapped", StringComparison.OrdinalIgnoreCase));
+                Assert.Equal("Remapped", pair.To.Name);
                 Assert.False(pair.To.Retargetable);
             }
             finally
@@ -2825,9 +2892,9 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 List<Exception> errors = new List<Exception>();
                 List<string> errorFileNames = new List<string>();
                 RedistList.ReadFile(info, assembliesReadIn, errors, errorFileNames, remap);
-                Assert.Equal(0, errors.Count); // "Expected no Errors"
-                Assert.Equal(0, errorFileNames.Count); // "Expected no Error file names"
-                Assert.Equal(0, remap.Count);
+                Assert.Empty(errors); // "Expected no Errors"
+                Assert.Empty(errorFileNames); // "Expected no Error file names"
+                Assert.Empty(remap);
             }
             finally
             {
@@ -2860,13 +2927,13 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 List<Exception> errors = new List<Exception>();
                 List<string> errorFileNames = new List<string>();
                 RedistList.ReadFile(info, assembliesReadIn, errors, errorFileNames, remap);
-                Assert.Equal(0, errors.Count); // "Expected no Errors"
-                Assert.Equal(0, errorFileNames.Count); // "Expected no Error file names"
-                Assert.Equal(1, remap.Count);
+                Assert.Empty(errors); // "Expected no Errors"
+                Assert.Empty(errorFileNames); // "Expected no Error file names"
+                Assert.Single(remap);
 
                 AssemblyRemapping pair = remap.First<AssemblyRemapping>();
-                Assert.True(pair.From.Name.Equals("System.Xml", StringComparison.OrdinalIgnoreCase));
-                Assert.True(pair.To.Name.Equals("Remapped", StringComparison.OrdinalIgnoreCase));
+                Assert.Equal("System.Xml", pair.From.Name);
+                Assert.Equal("Remapped", pair.To.Name);
                 Assert.True(pair.From.Retargetable);
                 Assert.False(pair.To.Retargetable);
             }
@@ -2898,9 +2965,9 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 List<Exception> errors = new List<Exception>();
                 List<string> errorFileNames = new List<string>();
                 RedistList.ReadFile(info, assembliesReadIn, errors, errorFileNames, remap);
-                Assert.Equal(0, errors.Count); // "Expected no Errors"
-                Assert.Equal(0, errorFileNames.Count); // "Expected no Error file names"
-                Assert.Equal(0, remap.Count);
+                Assert.Empty(errors); // "Expected no Errors"
+                Assert.Empty(errorFileNames); // "Expected no Error file names"
+                Assert.Empty(remap);
             }
             finally
             {
@@ -2919,7 +2986,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             string testPath = Path.Combine(Path.GetTempPath(), @"RawFileNameRelative");
             string previousCurrentDirectory = Directory.GetCurrentDirectory();
@@ -2932,7 +2999,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 t.SearchPaths = new string[] { "{RawFileName}" };
                 Execute(t);
 
-                Assert.Equal(1, t.ResolvedFiles.Length);
+                Assert.Single(t.ResolvedFiles);
                 Assert.Equal(Path.Combine(testPath, "System.Xml.dll"), t.ResolvedFiles[0].ItemSpec);
             }
             finally
@@ -2957,7 +3024,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             string testPath = Path.Combine(Path.GetTempPath(), @"RawFileNameRelative");
             string previousCurrentDirectory = Directory.GetCurrentDirectory();
@@ -2970,7 +3037,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 t.SearchPaths = new string[] { "..\\RawFileNameRelative" };
                 Execute(t);
 
-                Assert.Equal(1, t.ResolvedFiles.Length);
+                Assert.Single(t.ResolvedFiles);
                 Assert.Equal(Path.Combine(testPath, "System.Xml.dll"), t.ResolvedFiles[0].ItemSpec);
             }
             finally
@@ -2993,7 +3060,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             string testPath = Path.Combine(Path.GetTempPath(), @"RawFileNameRelative");
             string previousCurrentDirectory = Directory.GetCurrentDirectory();
@@ -3009,7 +3076,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 t.SearchPaths = new string[] { "{HintPathFromItem}" };
                 Execute(t);
 
-                Assert.Equal(1, t.ResolvedFiles.Length);
+                Assert.Single(t.ResolvedFiles);
                 Assert.Equal(Path.Combine(testPath, "System.Xml.dll"), t.ResolvedFiles[0].ItemSpec);
             }
             finally
@@ -3030,7 +3097,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             ITaskItem taskItem = new TaskItem(Path.Combine(s_myVersion20Path, "System.Xml.dll"));
             taskItem.SetMetadata("SpecificVersion", "false");
@@ -3043,7 +3110,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(Path.Combine(s_myVersion20Path, "System.Xml.dll"), t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -3055,7 +3122,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             ITaskItem taskItem = new TaskItem(Path.Combine(s_myVersion20Path, "System.Xml.dll"));
             taskItem.SetMetadata("SpecificVersion", "true");
@@ -3068,7 +3135,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(Path.Combine(s_myVersion20Path, "System.Xml.dll"), t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -3080,7 +3147,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -3095,7 +3162,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(Path.Combine(s_myVersion20Path, "System.Data.dll"), t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -3110,7 +3177,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
             t.BuildEngine = engine;
 
             TaskItem item = new TaskItem(@"c:\DoesntExist\System.Xml.dll");
@@ -3143,7 +3210,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
             t.BuildEngine = engine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem(@"c:\DoesntExist\System.Xml.dll") };
@@ -3165,7 +3232,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem("VendorAssembly") };
             t.SearchPaths = new string[] { "{CandidateAssemblyFiles}" };
@@ -3173,7 +3240,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Execute(t);
 
-            Assert.Equal(0, t.ResolvedFiles.Length);
+            Assert.Empty(t.ResolvedFiles);
         }
 
         /// <summary>
@@ -3183,7 +3250,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void ResolveToGAC()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
             t.BuildEngine = engine;
 
             t.Assemblies = new ITaskItem[] { new TaskItem("System") };
@@ -3191,7 +3258,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.SearchPaths = new string[] { "{GAC}" };
             bool succeeded = t.Execute();
             Assert.True(succeeded);
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
         }
 
         /// <summary>
@@ -3201,7 +3268,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void ResolveToGACSpecificVersion()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
             t.BuildEngine = engine;
 
             TaskItem item = new TaskItem("System");
@@ -3211,7 +3278,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.TargetedRuntimeVersion = new Version("0.5.0.0").ToString();
             bool succeeded = t.Execute();
             Assert.True(succeeded);
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
         }
 
         /// <summary>
@@ -3223,12 +3290,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         [Trait("Category", "mono-osx-failing")]
         public void ParentAssemblyResolvedFromAForGac()
         {
-            Hashtable parentReferenceFolderHash = new Hashtable();
-            List<string> parentReferenceFolders = new List<string>();
-            List<Reference> referenceList = new List<Reference>();
+            var parentReferenceFolders = new List<string>();
+            var referenceList = new List<Reference>();
 
-            TaskItem taskItem = new TaskItem("Microsoft.VisualStudio.Interopt, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089");
-            Reference reference = new Reference(isWinMDFile, fileExists, getRuntimeVersion);
+            var taskItem = new TaskItem("Microsoft.VisualStudio.Interopt, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089");
+            var reference = new Reference(isWinMDFile, fileExists, getRuntimeVersion);
             reference.MakePrimaryAssemblyReference(taskItem, false, ".dll");
             reference.FullPath = "c:\\AssemblyFolders\\Microsoft.VisualStudio.Interopt.dll";
             reference.ResolvedSearchPath = "{AssemblyFolders}";
@@ -3249,21 +3315,24 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             foreach (Reference parentReference in referenceList)
             {
-                ReferenceTable.CalcuateParentAssemblyDirectories(parentReferenceFolderHash, parentReferenceFolders, parentReference);
+                ReferenceTable.CalculateParentAssemblyDirectories(parentReferenceFolders, parentReference);
             }
 
-            Assert.Equal(1, parentReferenceFolders.Count);
-            Assert.True(parentReferenceFolders[0].Equals(reference2.ResolvedSearchPath, StringComparison.OrdinalIgnoreCase));
+            Assert.Single(parentReferenceFolders);
+            Assert.Equal(reference2.ResolvedSearchPath, parentReferenceFolders[0]);
         }
-
-
+        
         /// <summary>
         /// Generate a fake reference which has been resolved from the gac. We will use it to verify the creation of the exclusion list.
         /// </summary>
         /// <returns></returns>
         private ReferenceTable GenerateTableWithAssemblyFromTheGlobalLocation(string location)
         {
-            ReferenceTable referenceTable = new ReferenceTable(null, false, false, false, false, new string[0], null, null, null, null, null, null, SystemProcessorArchitecture.None, fileExists, null, null, null, null, null, null, null, null, null, new Version("4.0"), null, null, null, true, false, null, null, false, null, WarnOrErrorOnTargetArchitectureMismatchBehavior.None, false, false, null);
+            ReferenceTable referenceTable = new ReferenceTable(null, false, false, false, false, new string[0], null, null, null, null, null, null, SystemProcessorArchitecture.None, fileExists, null, null, null, null,
+#if FEATURE_WIN32_REGISTRY
+                null, null, null,
+#endif
+                null, null, new Version("4.0"), null, null, null, true, false, null, null, false, null, WarnOrErrorOnTargetArchitectureMismatchBehavior.None, false, false, null);
 
             AssemblyNameExtension assemblyNameExtension = new AssemblyNameExtension(new AssemblyName("Microsoft.VisualStudio.Interopt, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"));
             TaskItem taskItem = new TaskItem("Microsoft.VisualStudio.Interopt, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089");
@@ -3297,7 +3366,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
             t.BuildEngine = engine;
             t.Assemblies = new ITaskItem[]
             {
@@ -3310,10 +3379,10 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Execute(t);
 
             // There should be no resolved file, because the image was bad.
-            Assert.Equal(0, t.ResolvedFiles.Length);
+            Assert.Empty(t.ResolvedFiles);
 
             // There should be no related files either.
-            Assert.Equal(0, t.RelatedFiles.Length);
+            Assert.Empty(t.RelatedFiles);
             engine.AssertLogDoesntContain("BadImage.pdb");
             engine.AssertLogDoesntContain("HRESULT");
 
@@ -3347,10 +3416,10 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Execute(t);
 
             // There should be one resolved file, because the dependency was bad.
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
 
             // There should be no related files.
-            Assert.Equal(0, t.RelatedFiles.Length);
+            Assert.Empty(t.RelatedFiles);
             engine.AssertLogDoesntContain("BadImage.pdb");
             engine.AssertLogDoesntContain("HRESULT");
 
@@ -3367,7 +3436,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem(AssemblyRef.SystemData) };
             t.SearchPaths = new string[]
@@ -3378,7 +3447,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(Path.Combine(s_myVersion20Path, "System.Data.dll"), t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -3390,7 +3459,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] { new TaskItem(AssemblyRef.SystemData) };
             t.SearchPaths = new string[]
@@ -3400,7 +3469,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(Path.Combine(s_myVersion20Path, "System.Data.dll"), t.ResolvedFiles[0].ItemSpec);
             Assert.Equal("false", t.ResolvedFiles[0].GetMetadata("CopyLocal"));
         }
@@ -3413,7 +3482,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void PrivateItemInFrameworksGetsCopyLocalTrue()
         {
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             // Create the mocks.
             Microsoft.Build.Shared.FileExists fileExists = new Microsoft.Build.Shared.FileExists(FileExists);
@@ -3445,16 +3514,15 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// If we have no framework directories passed in and an assembly is found outside of the GAC then it should be able to be copy local.
         /// </summary>
         [Fact]
-        [Trait("Category", "mono-osx-failing")]
         public void NoFrameworkDirectoriesStillCopyLocal()
         {
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             // Also construct a set of assembly names to pass in.
             ITaskItem[] assemblyNames = new TaskItem[]
             {
-                new TaskItem(@"C:\AssemblyFolder\SomeAssembly.dll"),
+                new TaskItem(s_assemblyFolder_SomeAssemblyDllPath)
             };
 
             // Now, pass feed resolved primary references into ResolveAssemblyReference.
@@ -3475,7 +3543,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void Regress284485_PrivateItemWithBogusValue()
         {
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             // Also construct a set of assembly names to pass in.
             ITaskItem[] assemblyNames = new TaskItem[]
@@ -3495,110 +3563,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Execute(t);
 
             string message = String.Format(AssemblyResources.GetString("General.InvalidAttributeMetadata"), assemblyNames[0].ItemSpec, "Private", "bogus", "bool");
-            Assert.True(
-                engine.Log.Contains
-                (
-                    message
-                )
-            );
-        }
-
-        /// <summary>
-        /// Consider this dependency chain:
-        ///
-        /// App
-        ///   References - A
-        ///        Depends on D version 1
-        ///   References - B
-        ///        Depends on D version 2
-        ///
-        /// And neither D1 nor D2 are CopyLocal = true. In this case, both dependencies
-        /// are kept because this will work in a SxS manner.
-        /// </summary>
-        [Fact]
-        public void ConflictBetweenNonCopyLocalDependencies()
-        {
-            ResolveAssemblyReference t = new ResolveAssemblyReference();
-
-            MockEngine e = new MockEngine();
-            t.BuildEngine = e;
-
-            t.Assemblies = new ITaskItem[]
-            {
-                new TaskItem("A"),
-                new TaskItem("B")
-            };
-
-            t.SearchPaths = new string[]
-            {
-                s_myLibrariesRootPath,
-                s_myLibraries_V1Path,
-                s_myLibraries_V2Path
-            };
-
-            Execute(t);
-
-            Assert.Equal(2, t.ResolvedDependencyFiles.Length);
-            Assert.True(ContainsItem(t.ResolvedDependencyFiles, s_myLibraries_V2_DDllPath)); // "Expected to find assembly, but didn't."
-            Assert.True(ContainsItem(t.ResolvedDependencyFiles, s_myLibraries_V1_DDllPath)); // "Expected to find assembly, but didn't."
-            Assert.Equal(1, t.SuggestedRedirects.Length);
-            Assert.True(ContainsItem(t.SuggestedRedirects, @"D, Culture=neutral, PublicKeyToken=aaaaaaaaaaaaaaaa")); // "Expected to find suggested redirect, but didn't"
-            Assert.Equal(1, e.Warnings); // "Should only be one warning for suggested redirects."
-        }
-
-        /// <summary>
-        /// Consider this dependency chain:
-        ///
-        /// App
-        ///   References - A
-        ///        Depends on D version 1
-        ///   References - B
-        ///        Depends on D version 2
-        ///
-        /// And both D1 and D2 are CopyLocal = true. This case is a warning because both
-        /// assemblies can't be copied to the output directory.
-        /// </summary>
-        [Fact]
-        public void ConflictBetweenCopyLocalDependencies()
-        {
-            ResolveAssemblyReference t = new ResolveAssemblyReference();
-
-            MockEngine engine = new MockEngine();
-            t.BuildEngine = engine;
-
-            t.Assemblies = new ITaskItem[] {
-                new TaskItem("A"), new TaskItem("B")
-            };
-
-            t.SearchPaths = new string[] {
-                s_myLibrariesRootPath, s_myLibraries_V1Path, s_myLibraries_V2Path
-            };
-
-            t.TargetFrameworkDirectories = new string[] { s_myVersion20Path };
-
-            bool result = Execute(t);
-
-            Assert.Equal(1, engine.Warnings); // @"Expected a warning because this is an unresolvable conflict."
-            Assert.Equal(1, t.SuggestedRedirects.Length);
-            Assert.True(ContainsItem(t.SuggestedRedirects, @"D, Culture=neutral, PublicKeyToken=aaaaaaaaaaaaaaaa")); // "Expected to find suggested redirect, but didn't"
-            Assert.Equal(1, engine.Warnings); // "Should only be one warning for suggested redirects."
-            Assert.True(
-                engine.Log.Contains
-                (
-                    String.Format
-                    (
-                        AssemblyResources.GetString
-                        (
-                            "ResolveAssemblyReference.ConflictRedirectSuggestion"
-                        ),
-                        "D, Culture=neutral, PublicKeyToken=aaaaaaaaaaaaaaaa",
-                        "1.0.0.0",
-                        s_myLibraries_V1_DDllPath,
-                        "2.0.0.0",
-                        s_myLibraries_V2_DDllPath
-                    )
-                )
-            );
+            Assert.Contains(message, engine.Log);
         }
 
         /// <summary>
@@ -3624,7 +3589,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
             t.BuildEngine = engine;
 
             t.Assemblies = new ITaskItem[] {
@@ -3669,7 +3634,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
             t.BuildEngine = engine;
 
             t.Assemblies = new ITaskItem[] {
@@ -3697,66 +3662,25 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// Consider this dependency chain:
         ///
         /// App
-        ///   References - A
-        ///        Depends on D version 1
-        ///   References - B
-        ///        Depends on D version 2
-        ///
-        /// And both D1 and D2 are CopyLocal = true. In this case, there is no warning because
-        /// AutoUnify is set to true.
-        /// </summary>
-        [Fact]
-        public void ConflictBetweenCopyLocalDependenciesWithAutoUnify()
-        {
-            ResolveAssemblyReference t = new ResolveAssemblyReference();
-
-            MockEngine engine = new MockEngine();
-            t.BuildEngine = engine;
-            t.AutoUnify = true;
-
-            t.Assemblies = new ITaskItem[] {
-                new TaskItem("A"), new TaskItem("B")
-            };
-
-            t.SearchPaths = new string[] {
-                s_myLibrariesRootPath, s_myLibraries_V1Path, s_myLibraries_V2Path
-            };
-
-            t.TargetFrameworkDirectories = new string[] { s_myVersion20Path };
-
-            bool result = Execute(t);
-
-            // RAR will now produce suggested redirects even if AutoUnify is on.
-            Assert.Equal(1, t.SuggestedRedirects.Length);
-            Assert.Equal(0, engine.Warnings); // "Should be no warning for suggested redirects."
-        }
-
-        /// <summary>
-        /// Consider this dependency chain:
-        ///
-        /// App
-        ///   References - A
-        ///        Depends on D version 1
         ///   References - B
         ///        Depends on D version 2
         ///   References - D, version 1
         ///
         /// Both D1 and D2 are CopyLocal. This is a warning because D1 is a lower version
-        /// than D2 so that can't unify. These means that eventually when they're copied
-        /// to the output directory they'll conflict.
+        /// than both D2 so that can't unify. These means that eventually when 
+        /// they're copied to the output directory they'll conflict.
         /// </summary>
         [Fact]
-        public void ConflictWithBackVersionPrimary()
+        public void ConflictGeneratesMessageReferencingAssemblyName()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
             {
                 new TaskItem("B"),
-                new TaskItem("A"),
                 new TaskItem("D, Version=1.0.0.0, Culture=neutral, PublicKeyToken=aaaaaaaaaaaaaaaa")
             };
 
@@ -3771,32 +3695,37 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(1, e.Warnings); // @"Expected one warning."
 
-            Assert.Equal(0, t.SuggestedRedirects.Length);
-            Assert.Equal(3, t.ResolvedFiles.Length);
-            Assert.True(ContainsItem(t.ResolvedFiles, s_myLibraries_V1_DDllPath)); // "Expected to find assembly, but didn't."
+            // Check that we have a message identifying conflicts with "D"
+            e.AssertLogContainsMessageFromResource(AssemblyResources.GetString, "ResolveAssemblyReference.FoundConflicts", "D");
         }
 
+
         /// <summary>
-        /// Same as ConflictWithBackVersionPrimary, except AutoUnify is true.
-        /// Even when AutoUnify is set we should see a warning since the binder will not allow
-        /// an older version to satisfy a reference to a newer version.
+        /// Consider this dependency chain:
+        ///
+        /// App
+        ///   References - B
+        ///        Depends on D version 2
+        ///        Depends on G, version 2
+        ///   References - D, version 1
+        ///   References - G, version 1
+        ///
+        /// All of Dv1, Dv2, Gv1 and Gv2 are CopyLocal. We should get two conflict warnings, one for D and one for G.
         /// </summary>
         [Fact]
-        public void ConflictWithBackVersionPrimaryWithAutoUnify()
+        public void ConflictGeneratesMessageReferencingEachConflictingAssemblyName()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
             {
                 new TaskItem("B"),
-                new TaskItem("A"),
-                new TaskItem("D, Version=1.0.0.0, Culture=neutral, PublicKeyToken=aaaaaaaaaaaaaaaa")
+                new TaskItem("D, Version=1.0.0.0, Culture=neutral, PublicKeyToken=aaaaaaaaaaaaaaaa"),
+                new TaskItem("G, Version=1.0.0.0, Culture=neutral, PublicKeyToken=aaaaaaaaaaaaaaaa")
             };
-
-            t.AutoUnify = true;
 
             t.SearchPaths = new string[]
             {
@@ -3807,11 +3736,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             bool result = Execute(t);
 
-            Assert.Equal(1, e.Warnings); // @"Expected one warning."
+            Assert.Equal(2, e.Warnings); // @"Expected two warnings."
 
-            Assert.Equal(0, t.SuggestedRedirects.Length);
-            Assert.Equal(3, t.ResolvedFiles.Length);
-            Assert.True(ContainsItem(t.ResolvedFiles, s_myLibraries_V1_DDllPath)); // "Expected to find assembly, but didn't."
+            // Check that we have both the expected messages
+            e.AssertLogContainsMessageFromResource(AssemblyResources.GetString, "ResolveAssemblyReference.FoundConflicts", "D");
+            e.AssertLogContainsMessageFromResource(AssemblyResources.GetString, "ResolveAssemblyReference.FoundConflicts", "G");
         }
 
         /// <summary>
@@ -3833,7 +3762,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -3852,8 +3781,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.True(result); // @"Expected a success because this conflict is solvable."
             Assert.Equal(3, t.ResolvedFiles.Length);
-            Assert.True(ContainsItem(t.ResolvedFiles, s_myLibraries_V2_DDllPath)); // "Expected to find assembly, but didn't."
-            Assert.Equal(1, t.ResolvedDependencyFiles.Length);
+            Assert.True(ContainsItem(t.ResolvedFiles, s_myLibraries_V2_DDllPath));
+
+            Assert.Equal(2, t.ResolvedDependencyFiles.Length);
+            Assert.True(ContainsItem(t.ResolvedDependencyFiles, s_myLibraries_V1_DDllPath));
+            Assert.True(ContainsItem(t.ResolvedDependencyFiles, s_myLibraries_V2_GDllPath));
         }
 
 
@@ -3872,7 +3804,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -3911,7 +3843,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -3947,7 +3879,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -3982,7 +3914,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -4011,7 +3943,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -4023,7 +3955,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.SearchPaths = DefaultPaths;
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.Equal(Path.Combine(s_myVersion20Path, "System.XML.dll"), t.ResolvedFiles[0].ItemSpec);
         }
 
@@ -4036,7 +3968,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] {
                 new TaskItem(@"System.XML, Version=9.9.9999.9, Culture=neutral, PublicKeyToken=abababababababab")
@@ -4047,7 +3979,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.SearchPaths = DefaultPaths;
             Execute(t);
 
-            Assert.Equal(0, t.ResolvedFiles.Length);
+            Assert.Empty(t.ResolvedFiles);
         }
 
         /// <summary>
@@ -4059,7 +3991,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[] {
                 new TaskItem(@"System.XML, Version=9.9.9999.9, Culture=neutral, PublicKeyToken=abababababababab")
@@ -4068,7 +4000,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.SearchPaths = DefaultPaths;
             Execute(t);
 
-            Assert.Equal(0, t.ResolvedFiles.Length);
+            Assert.Empty(t.ResolvedFiles);
         }
 
 
@@ -4080,7 +4012,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine m = new MockEngine();
+            MockEngine m = new MockEngine(_output);
             t.BuildEngine = m;
 
             t.Assemblies = new ITaskItem[]
@@ -4092,7 +4024,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             t.SearchPaths = DefaultPaths;
             Execute(t);
 
-            Assert.Equal(0, t.ResolvedFiles.Length);
+            Assert.Empty(t.ResolvedFiles);
             // One warning for the un-resolved reference and one warning saying you are trying to target an assembly higher than the current target
             // framework.
             Assert.Equal(1, m.Warnings);
@@ -4115,7 +4047,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -4135,7 +4067,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(0, e.Warnings); // "No warnings expected in this scenario."
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.True(ContainsItem(t.ResolvedFiles, @"c:\MyExecutableLibraries\a.exe")); // "Expected to find assembly, but didn't."
         }
 
@@ -4154,7 +4086,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -4174,7 +4106,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(0, e.Warnings); // "No warnings expected in this scenario."
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.True(ContainsItem(t.ResolvedFiles, s_myLibraries_ADllPath)); // "Expected to find assembly, but didn't."
         }
 
@@ -4194,7 +4126,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -4212,7 +4144,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(0, e.Warnings); // "No warnings expected in this scenario."
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.True(ContainsItem(t.ResolvedFiles, s_myLibraries_ADllPath)); // "Expected to find assembly, but didn't."
         }
 
@@ -4233,7 +4165,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -4251,7 +4183,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(0, e.Warnings); // "No warnings expected in this scenario."
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.True(ContainsItem(t.ResolvedFiles, @"c:\MyExecutableLibraries\A.exe")); // "Expected to find assembly, but didn't."
         }
 
@@ -4274,7 +4206,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -4293,7 +4225,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(1, e.Warnings); // "No warnings expected in this scenario."
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(0, t.ResolvedFiles.Length);
+            Assert.Empty(t.ResolvedFiles);
         }
 
         /// <summary>
@@ -4313,7 +4245,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -4332,7 +4264,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(0, e.Warnings); // "No warnings expected in this scenario."
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.True(ContainsItem(t.ResolvedFiles, @"c:\MyStronglyNamed\A.dll")); // "Expected to find assembly, but didn't."
         }
 
@@ -4351,7 +4283,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -4368,7 +4300,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             bool result = Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.True(ContainsItem(t.ResolvedFiles, s_myLibraries_V1_DDllPath)); // "Expected to find assembly, but didn't."
         }
 
@@ -4402,7 +4334,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
             t.BuildEngine = engine;
 
             t.Assemblies = new ITaskItem[]
@@ -4421,7 +4353,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Execute(t);
 
             Assert.Equal(2, t.ResolvedFiles.Length);
-            Assert.Equal(1, t.ResolvedDependencyFiles.Length); // Not 2 because D is treated as a primary reference.
+            Assert.Single(t.ResolvedDependencyFiles); // Not 2 because D is treated as a primary reference.
             Assert.True(ContainsItem(t.ResolvedDependencyFiles, s_myLibraries_V1_E_EDllPath)); // "Expected to find assembly, but didn't."
             Assert.Equal(0, engine.Warnings);
             Assert.Equal(0, engine.Errors);
@@ -4463,7 +4395,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -4482,9 +4414,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Execute(t);
 
             Assert.Equal(2, t.ResolvedFiles.Length);
-            Assert.Equal(3, t.ResolvedDependencyFiles.Length);
-            Assert.True(ContainsItem(t.ResolvedDependencyFiles, s_myLibraries_V1_DDllPath)); // "Expected to find assembly, but didn't."
-            Assert.True(ContainsItem(t.ResolvedDependencyFiles, s_myLibraries_V1_DDllPath)); // "Expected to find assembly, but didn't."
+
+            Assert.Equal(4, t.ResolvedDependencyFiles.Length);
+            Assert.True(ContainsItem(t.ResolvedDependencyFiles, s_myLibraries_V1_DDllPath));
+            Assert.True(ContainsItem(t.ResolvedDependencyFiles, s_myLibraries_V2_DDllPath));
+            Assert.True(ContainsItem(t.ResolvedDependencyFiles, s_myLibraries_V2_GDllPath));
+            Assert.True(ContainsItem(t.ResolvedDependencyFiles, s_myLibraries_V1_E_EDllPath));
 
             foreach (ITaskItem item in t.ResolvedDependencyFiles)
             {
@@ -4523,7 +4458,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -4566,7 +4501,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -4622,7 +4557,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -4674,7 +4609,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -4690,7 +4625,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             t.Execute();
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
         }
 
         /// <summary>
@@ -4716,7 +4651,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -4732,7 +4667,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Execute(t);
 
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
         }
 
 
@@ -4743,7 +4678,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void Regress284466_DirectoryIntoAssemblyFiles()
         {
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             ITaskItem[] assemblyFiles = new TaskItem[]
                     {
@@ -4761,14 +4696,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             bool succeeded = Execute(t);
 
             Assert.True(succeeded);
-            Assert.Equal(1, t.ResolvedFiles.Length);
-            AssertNoCase("UnifyMe, Version=1.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, ProcessorArchitecture=MSIL", t.ResolvedFiles[0].GetMetadata("FusionName"));
-            Assert.True(
-                engine.Log.Contains
-                (
-                    String.Format(AssemblyResources.GetString("General.ExpectedFileGotDirectory"), Path.GetTempPath())
-                )
-            );
+            Assert.Single(t.ResolvedFiles);
+            t.ResolvedFiles[0].GetMetadata("FusionName").ShouldBe("UnifyMe, Version=1.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, ProcessorArchitecture=MSIL", StringCompareShould.IgnoreCase);
+            Assert.Contains(
+                String.Format(AssemblyResources.GetString("General.ExpectedFileGotDirectory"), Path.GetTempPath()),
+                engine.Log);
         }
 
         /// <summary>
@@ -4786,7 +4718,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             try
             {
                 // Create the engine.
-                MockEngine engine = new MockEngine();
+                MockEngine engine = new MockEngine(_output);
 
                 ITaskItem[] assemblyFiles = new TaskItem[]
                     {
@@ -4803,7 +4735,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 bool succeeded = Execute(t);
 
                 Assert.True(succeeded);
-                Assert.Equal(1, t.ResolvedFiles.Length);
+                Assert.Single(t.ResolvedFiles);
                 Assert.Equal(Path.Combine(testPath, "System.Xml.dll"), t.ResolvedFiles[0].ItemSpec);
             }
             finally
@@ -4826,7 +4758,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -4844,7 +4776,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(1, e.Warnings); // "One warning expected in this scenario."
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(0, t.ResolvedFiles.Length);
+            Assert.Empty(t.ResolvedFiles);
         }
 
         /// <summary>
@@ -4857,7 +4789,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.AssemblyFiles = new ITaskItem[]
@@ -4869,7 +4801,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(0, e.Warnings); // "No warnings expected in this scenario."
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
         }
 
 
@@ -4881,7 +4813,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -4895,7 +4827,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(1, e.Warnings); // "One warning expected in this scenario."
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(0, t.ResolvedFiles.Length);
+            Assert.Empty(t.ResolvedFiles);
         }
 
 
@@ -4908,7 +4840,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -4927,7 +4859,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(1, e.Warnings); // "No warning expected in this scenario."
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(0, t.ResolvedFiles.Length);
+            Assert.Empty(t.ResolvedFiles);
         }
 
         /// <summary>
@@ -4952,7 +4884,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -4975,7 +4907,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(0, e.Warnings); // "One warning expected in this scenario."
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
         }
 
         /// <summary>
@@ -4989,7 +4921,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -5017,7 +4949,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(1, e.Warnings); // "One warning expected in this scenario." // Couldn't find dependencies for {HintPathFromItem}-resolved item.
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(0, t.ResolvedFiles.Length);  // This test used to have 1 here. But that was because the mock GetAssemblyName was not accurately throwing an exception for non-existent files.
+            Assert.Empty(t.ResolvedFiles);  // This test used to have 1 here. But that was because the mock GetAssemblyName was not accurately throwing an exception for non-existent files.
         }
 
 
@@ -5030,7 +4962,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -5069,7 +5001,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -5095,7 +5027,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(0, e.Warnings); // "No warning expected in this scenario."
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
         }
 
         /// <summary>
@@ -5106,7 +5038,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -5123,7 +5055,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(0, e.Warnings); // "No warnings expected in this scenario."
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.True(ContainsItem(t.ResolvedFiles, s_myLibraries_ADllPath)); // "Expected to find assembly, but didn't."
         }
 
@@ -5135,7 +5067,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -5153,7 +5085,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(0, e.Warnings); // "No warnings expected in this scenario."
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.True(ContainsItem(t.ResolvedFiles, s_myLibraries_ADllPath)); // "Expected to find assembly, but didn't."
         }
 
@@ -5165,7 +5097,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void Regress271273_BogusAppConfig()
         {
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             ITaskItem[] assemblyFiles = new TaskItem[]
                     {
@@ -5207,7 +5139,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -5249,7 +5181,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -5283,7 +5215,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 File.Delete(appConfigFile);
             }
 
-            Assert.Equal(1, t.ResolvedDependencyFiles.Length);
+            Assert.Single(t.ResolvedDependencyFiles);
         }
 
         /// <summary>
@@ -5295,7 +5227,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -5321,7 +5253,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -5361,7 +5293,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.Equal(0, e.Warnings); // "No warnings expected in this scenario."
             Assert.Equal(0, e.Errors); // "No errors expected in this scenario."
-            Assert.Equal(1, t.ResolvedFiles.Length);
+            Assert.Single(t.ResolvedFiles);
             Assert.True(ContainsItem(t.ResolvedFiles, @"c:\Regress407623\CrystalReportsAssembly.dll")); // "Expected to find assembly, but didn't."
         }
 
@@ -5373,7 +5305,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -5409,7 +5341,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -5449,7 +5381,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 File.Delete(redistFile);
             }
 
-            Assert.Equal(t.ResolvedFiles[0].GetMetadata("CopyLocal"), "true"); // "Expected CopyLocal==true."
+            Assert.Equal("true", t.ResolvedFiles[0].GetMetadata("CopyLocal")); // "Expected CopyLocal==true."
         }
 
         /// <summary>
@@ -5491,23 +5423,23 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
                 AssemblyNameExtension assemblyName = new AssemblyNameExtension("A");
                 AssemblyNameExtension foundAssemblyName = FrameworkPathResolver.GetHighestVersionInRedist(installedAssemblies, assemblyName);
-                Assert.True(foundAssemblyName.Equals(Av3));
+                Assert.Equal(Av3, foundAssemblyName);
 
                 assemblyName = new AssemblyNameExtension("A, PublicKeyToken=a5d015c7d5a0b012");
                 foundAssemblyName = FrameworkPathResolver.GetHighestVersionInRedist(installedAssemblies, assemblyName);
-                Assert.True(foundAssemblyName.Equals(Av2));
+                Assert.Equal(Av2, foundAssemblyName);
 
                 assemblyName = new AssemblyNameExtension("A, Culture=de-DE");
                 foundAssemblyName = FrameworkPathResolver.GetHighestVersionInRedist(installedAssemblies, assemblyName);
-                Assert.True(foundAssemblyName.Equals(Av3));
+                Assert.Equal(Av3, foundAssemblyName);
 
                 assemblyName = new AssemblyNameExtension("A, PublicKeyToken=a5d015c7d5a0b012, Culture=de-DE");
                 foundAssemblyName = FrameworkPathResolver.GetHighestVersionInRedist(installedAssemblies, assemblyName);
-                Assert.True(foundAssemblyName.Equals(Av1));
+                Assert.Equal(Av1, foundAssemblyName);
 
                 assemblyName = new AssemblyNameExtension("A, Version=17.0.0.0, PublicKeyToken=a5d015c7d5a0b012, Culture=de-DE");
                 foundAssemblyName = FrameworkPathResolver.GetHighestVersionInRedist(installedAssemblies, assemblyName);
-                Assert.True(foundAssemblyName.Equals(assemblyName));
+                Assert.Equal(assemblyName, foundAssemblyName);
             }
             finally
             {
@@ -5522,7 +5454,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -5575,7 +5507,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -5655,11 +5587,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Assert.True(success); // "Expected no errors."
             Assert.Equal(5, t.ResolvedFiles.Length); // "Expected two resolved assemblies."
-            Assert.True(t.ResolvedFiles.Where(Item => Item.GetMetadata("OriginalItemSpec").Equals("Microsoft.Build.Engine", StringComparison.OrdinalIgnoreCase)).First().GetMetadata("FrameworkFile").Equals("True", StringComparison.OrdinalIgnoreCase));
-            Assert.True(t.ResolvedFiles.Where(Item => Item.GetMetadata("OriginalItemSpec").Equals("System.Xml", StringComparison.OrdinalIgnoreCase)).First().GetMetadata("FrameworkFile").Equals("True", StringComparison.OrdinalIgnoreCase));
-            Assert.True(t.ResolvedFiles.Where(Item => Item.GetMetadata("OriginalItemSpec").Equals("B", StringComparison.OrdinalIgnoreCase)).First().GetMetadata("FrameworkFile").Equals("True", StringComparison.OrdinalIgnoreCase));
-            Assert.True(t.ResolvedFiles.Where(Item => Item.GetMetadata("OriginalItemSpec").Equals("C", StringComparison.OrdinalIgnoreCase)).First().GetMetadata("FrameworkFile").Equals("True", StringComparison.OrdinalIgnoreCase));
-            Assert.Equal(0, t.ResolvedFiles.Where(Item => Item.GetMetadata("OriginalItemSpec").Equals("D", StringComparison.OrdinalIgnoreCase)).First().GetMetadata("FrameworkFile").Length);
+            Assert.Equal("True", t.ResolvedFiles.Where(Item => Item.GetMetadata("OriginalItemSpec").Equals("Microsoft.Build.Engine", StringComparison.OrdinalIgnoreCase)).First().GetMetadata("FrameworkFile"), true);
+            Assert.Equal("True", t.ResolvedFiles.Where(Item => Item.GetMetadata("OriginalItemSpec").Equals("System.Xml", StringComparison.OrdinalIgnoreCase)).First().GetMetadata("FrameworkFile"), true);
+            Assert.Equal("True", t.ResolvedFiles.Where(Item => Item.GetMetadata("OriginalItemSpec").Equals("B", StringComparison.OrdinalIgnoreCase)).First().GetMetadata("FrameworkFile"), true);
+            Assert.Equal("True", t.ResolvedFiles.Where(Item => Item.GetMetadata("OriginalItemSpec").Equals("C", StringComparison.OrdinalIgnoreCase)).First().GetMetadata("FrameworkFile"), true);
+            Assert.Empty(t.ResolvedFiles.Where(Item => Item.GetMetadata("OriginalItemSpec").Equals("D", StringComparison.OrdinalIgnoreCase)).First().GetMetadata("FrameworkFile"));
         }
 
         /// <summary>
@@ -5710,7 +5642,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             RedistList redistList = RedistList.GetRedistList(new AssemblyTableInfo[0]);
             List<Exception> whiteListErrors = new List<Exception>();
             List<string> whiteListErrorFileNames = new List<string>();
-            Hashtable blackList = redistList.GenerateBlackList(new AssemblyTableInfo[0], whiteListErrors, whiteListErrorFileNames);
+            Dictionary<string, string> blackList = redistList.GenerateBlackList(new AssemblyTableInfo[0], whiteListErrors, whiteListErrorFileNames);
             Assert.Null(blackList); // "Should return null if the AssemblyTableInfo is empty and the redist list is empty"
         }
 
@@ -5728,11 +5660,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 RedistList redistList = RedistList.GetRedistList(new AssemblyTableInfo[] { redistListInfo });
                 List<Exception> whiteListErrors = new List<Exception>();
                 List<string> whiteListErrorFileNames = new List<string>();
-                Hashtable blackList = redistList.GenerateBlackList(new AssemblyTableInfo[0], whiteListErrors, whiteListErrorFileNames);
+                Dictionary<string, string> blackList = redistList.GenerateBlackList(new AssemblyTableInfo[0], whiteListErrors, whiteListErrorFileNames);
 
 
                 // Since there were no white list expect the black list to return null
-                Assert.Equal(0, blackList.Count); // "Expected to have no assemblies in the black list"
+                Assert.Empty(blackList); // "Expected to have no assemblies in the black list"
             }
             finally
             {
@@ -5754,7 +5686,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 List<Exception> whiteListErrors = new List<Exception>();
                 List<string> whiteListErrorFileNames = new List<string>();
 
-                Hashtable blackList = redistList.GenerateBlackList(
+                Dictionary<string, string> blackList = redistList.GenerateBlackList(
                                                                    new AssemblyTableInfo[]
                                                                                          {
                                                                                            new AssemblyTableInfo("c:\\RandomDirectory.xml", "TargetFrameworkDirectory"),
@@ -5765,7 +5697,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                                                                    );
 
                 // Since there were no white list expect the black list to return null
-                Assert.Equal(0, blackList.Count); // "Expected to have no assemblies in the black list"
+                Assert.Empty(blackList); // "Expected to have no assemblies in the black list"
                 Assert.Equal(2, whiteListErrors.Count); // "Expected there to be two errors in the whiteListErrors, one for each missing file"
                 Assert.Equal(2, whiteListErrorFileNames.Count); // "Expected there to be two errors in the whiteListErrorFileNames, one for each missing file"
             }
@@ -5797,12 +5729,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 RedistList redistList = RedistList.GetRedistList(new AssemblyTableInfo[] { redistListInfo });
                 List<Exception> whiteListErrors = new List<Exception>();
                 List<string> whiteListErrorFileNames = new List<string>();
-                Hashtable blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
+                Dictionary<string, string> blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
 
-                Assert.Equal(0, blackList.Count); // "Expected to have no assemblies in the black list"
-                Assert.Equal(1, whiteListErrors.Count); // "Expected there to be an error in the whiteListErrors"
-                Assert.Equal(1, whiteListErrorFileNames.Count); // "Expected there to be an error in the whiteListErrorFileNames"
-                Assert.False(((Exception)whiteListErrors[0]).Message.Contains("MSB3257")); // "Expect to not have the null redist warning"
+                Assert.Empty(blackList); // "Expected to have no assemblies in the black list"
+                Assert.Single(whiteListErrors); // "Expected there to be an error in the whiteListErrors"
+                Assert.Single(whiteListErrorFileNames); // "Expected there to be an error in the whiteListErrorFileNames"
+                Assert.DoesNotContain("MSB3257", ((Exception)whiteListErrors[0]).Message); // "Expect to not have the null redist warning"
             }
             finally
             {
@@ -5844,14 +5776,14 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 RedistList redistList = RedistList.GetRedistList(new AssemblyTableInfo[] { redistListInfo });
                 List<Exception> whiteListErrors = new List<Exception>();
                 List<string> whiteListErrorFileNames = new List<string>();
-                Hashtable blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
+                Dictionary<string, string> blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
 
                 // If the names do not match then i expect there to be no black list items
-                Assert.Equal(0, blackList.Count); // "Expected to have no assembly in the black list"
-                Assert.Equal(1, whiteListErrors.Count); // "Expected there to be one error in the whiteListErrors"
-                Assert.Equal(1, whiteListErrorFileNames.Count); // "Expected there to be one error in the whiteListErrorFileNames"
-                string message = ResourceUtilities.FormatResourceString("ResolveAssemblyReference.NoSubSetRedistListName", subsetFile);
-                Assert.True(((Exception)whiteListErrors[0]).Message.Contains(message)); // "Expected assertion to contain correct error code"
+                Assert.Empty(blackList); // "Expected to have no assembly in the black list"
+                Assert.Single(whiteListErrors); // "Expected there to be one error in the whiteListErrors"
+                Assert.Single(whiteListErrorFileNames); // "Expected there to be one error in the whiteListErrorFileNames"
+                string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword("ResolveAssemblyReference.NoSubSetRedistListName", subsetFile);
+                Assert.Contains(message, ((Exception)whiteListErrors[0]).Message); // "Expected assertion to contain correct error code"
             }
             finally
             {
@@ -5897,12 +5829,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 RedistList redistList = RedistList.GetRedistList(new AssemblyTableInfo[] { redistListInfo });
                 List<Exception> whiteListErrors = new List<Exception>();
                 List<string> whiteListErrorFileNames = new List<string>();
-                Hashtable blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
+                Dictionary<string, string> blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
 
                 // If the names do not match then i expect there to be no black list items
-                Assert.Equal(0, blackList.Count); // "Expected to have no assembly in the black list"
-                Assert.Equal(0, whiteListErrors.Count); // "Expected there to be no errors in the whiteListErrors"
-                Assert.Equal(0, whiteListErrorFileNames.Count); // "Expected there to be no errors in the whiteListErrorFileNames"
+                Assert.Empty(blackList); // "Expected to have no assembly in the black list"
+                Assert.Empty(whiteListErrors); // "Expected there to be no errors in the whiteListErrors"
+                Assert.Empty(whiteListErrorFileNames); // "Expected there to be no errors in the whiteListErrorFileNames"
             }
             finally
             {
@@ -5944,12 +5876,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 RedistList redistList = RedistList.GetRedistList(new AssemblyTableInfo[] { redistListInfo });
                 List<Exception> whiteListErrors = new List<Exception>();
                 List<string> whiteListErrorFileNames = new List<string>();
-                Hashtable blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
+                Dictionary<string, string> blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
 
                 // If the names do not match then i expect there to be no black list items
-                Assert.Equal(0, blackList.Count); // "Expected to have no assembly in the black list"
-                Assert.Equal(0, whiteListErrors.Count); // "Expected there to be no error in the whiteListErrors"
-                Assert.Equal(0, whiteListErrorFileNames.Count); // "Expected there to be no error in the whiteListErrorFileNames"
+                Assert.Empty(blackList); // "Expected to have no assembly in the black list"
+                Assert.Empty(whiteListErrors); // "Expected there to be no error in the whiteListErrors"
+                Assert.Empty(whiteListErrorFileNames); // "Expected there to be no error in the whiteListErrorFileNames"
             }
             finally
             {
@@ -5979,16 +5911,16 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 RedistList redistList = RedistList.GetRedistList(new AssemblyTableInfo[] { redistListInfo });
                 List<Exception> whiteListErrors = new List<Exception>();
                 List<string> whiteListErrorFileNames = new List<string>();
-                Hashtable blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
+                Dictionary<string, string> blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
 
                 // If the names do not match then i expect there to be no black list items
                 Assert.Equal(2, blackList.Count); // "Expected to have two assembly in the black list"
-                Assert.Equal(0, whiteListErrors.Count); // "Expected there to be no error in the whiteListErrors"
-                Assert.Equal(0, whiteListErrorFileNames.Count); // "Expected there to be no error in the whiteListErrorFileNames"
+                Assert.Empty(whiteListErrors); // "Expected there to be no error in the whiteListErrors"
+                Assert.Empty(whiteListErrorFileNames); // "Expected there to be no error in the whiteListErrorFileNames"
 
                 ArrayList whiteListErrors2 = new ArrayList();
                 ArrayList whiteListErrorFileNames2 = new ArrayList();
-                Hashtable blackList2 = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
+                Dictionary<string, string> blackList2 = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
                 Assert.Same(blackList, blackList2);
             }
             finally
@@ -6010,7 +5942,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             string microsoftBuildEnginePath = Path.Combine(ObjectModelHelpers.TempProjectDir, "v3.5\\Microsoft.Build.Engine.dll");
             string systemXmlPath = Path.Combine(ObjectModelHelpers.TempProjectDir, "v3.5\\System.Xml.dll");
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -6067,12 +5999,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 RedistList redistList = RedistList.GetRedistList(new AssemblyTableInfo[] { redistListInfo });
                 List<Exception> whiteListErrors = new List<Exception>();
                 List<string> whiteListErrorFileNames = new List<string>();
-                Hashtable blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
+                Dictionary<string, string> blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
 
-                Assert.Equal(1, blackList.Count); // "Expected to have one assembly in the black list"
+                Assert.Single(blackList); // "Expected to have one assembly in the black list"
                 Assert.True(blackList.ContainsKey("System.Xml, Version=2.0.0.0, Culture=Neutral, PublicKeyToken=b03f5f7f11d50a3a")); // "Expected System.xml to be in the black list"
-                Assert.Equal(0, whiteListErrors.Count); // "Expected there to be no error in the whiteListErrors"
-                Assert.Equal(0, whiteListErrorFileNames.Count); // "Expected there to be no error in the whiteListErrorFileNames"
+                Assert.Empty(whiteListErrors); // "Expected there to be no error in the whiteListErrors"
+                Assert.Empty(whiteListErrorFileNames); // "Expected there to be no error in the whiteListErrorFileNames"
             }
             finally
             {
@@ -6083,7 +6015,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
         /// <summary>
         /// Test the case where we generate a black list based on a set of subset file paths, and then ask for
-        /// another black list using the same file paths. We expect to get the exact same Hashtable out
+        /// another black list using the same file paths. We expect to get the exact same Dictionary out
         /// as it should be pulled from the cache.
         /// </summary>
         [Fact]
@@ -6100,17 +6032,17 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 RedistList redistList = RedistList.GetRedistList(new AssemblyTableInfo[] { redistListInfo });
                 List<Exception> whiteListErrors = new List<Exception>();
                 List<string> whiteListErrorFileNames = new List<string>();
-                Hashtable blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
+                Dictionary<string, string> blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
 
                 // Since there were no white list expect the black list to return null
-                Assert.Equal(1, blackList.Count); // "Expected to have one assembly in the black list"
+                Assert.Single(blackList); // "Expected to have one assembly in the black list"
                 Assert.True(blackList.ContainsKey("System.Xml, Version=2.0.0.0, Culture=Neutral, PublicKeyToken=b03f5f7f11d50a3a")); // "Expected System.xml to be in the black list"
-                Assert.Equal(0, whiteListErrors.Count); // "Expected there to be no error in the whiteListErrors"
-                Assert.Equal(0, whiteListErrorFileNames.Count); // "Expected there to be no error in the whiteListErrorFileNames"
+                Assert.Empty(whiteListErrors); // "Expected there to be no error in the whiteListErrors"
+                Assert.Empty(whiteListErrorFileNames); // "Expected there to be no error in the whiteListErrorFileNames"
 
                 List<Exception> whiteListErrors2 = new List<Exception>();
                 List<string> whiteListErrorFileNames2 = new List<string>();
-                Hashtable blackList2 = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors2, whiteListErrorFileNames2);
+                Dictionary<string, string> blackList2 = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors2, whiteListErrorFileNames2);
                 Assert.Same(blackList, blackList2);
             }
             finally
@@ -6145,11 +6077,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
                 List<Exception> whiteListErrors = new List<Exception>();
                 List<string> whiteListErrorFileNames = new List<string>();
-                Hashtable blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo, subsetListInfo2 }, whiteListErrors, whiteListErrorFileNames);
+                Dictionary<string, string> blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo, subsetListInfo2 }, whiteListErrors, whiteListErrorFileNames);
                 // Since there were no white list expect the black list to return null
-                Assert.Equal(0, blackList.Count); // "Expected to have no assemblies in the black list"
-                Assert.Equal(0, whiteListErrors.Count); // "Expected there to be no error in the whiteListErrors"
-                Assert.Equal(0, whiteListErrorFileNames.Count); // "Expected there to be no error in the whiteListErrorFileNames"
+                Assert.Empty(blackList); // "Expected to have no assemblies in the black list"
+                Assert.Empty(whiteListErrors); // "Expected there to be no error in the whiteListErrors"
+                Assert.Empty(whiteListErrorFileNames); // "Expected there to be no error in the whiteListErrorFileNames"
             }
             finally
             {
@@ -6186,12 +6118,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 RedistList redistList = RedistList.GetRedistList(new AssemblyTableInfo[] { redistListInfo });
                 List<Exception> whiteListErrors = new List<Exception>();
                 List<string> whiteListErrorFileNames = new List<string>();
-                Hashtable blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
+                Dictionary<string, string> blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
 
                 // Since there were no white list expect the black list to return null
-                Assert.Equal(0, blackList.Count); // "Expected to have no assemblies in the black list"
-                Assert.Equal(0, whiteListErrors.Count); // "Expected there to be no error in the whiteListErrors"
-                Assert.Equal(0, whiteListErrorFileNames.Count); // "Expected there to be no error in the whiteListErrorFileNames"
+                Assert.Empty(blackList); // "Expected to have no assemblies in the black list"
+                Assert.Empty(whiteListErrors); // "Expected there to be no error in the whiteListErrors"
+                Assert.Empty(whiteListErrorFileNames); // "Expected there to be no error in the whiteListErrorFileNames"
             }
             finally
             {
@@ -6218,12 +6150,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 RedistList redistList = RedistList.GetRedistList(new AssemblyTableInfo[] { redistListInfo });
                 List<Exception> whiteListErrors = new List<Exception>();
                 List<string> whiteListErrorFileNames = new List<string>();
-                Hashtable blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
+                Dictionary<string, string> blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFileNames);
 
                 // Since there were no white list expect the black list to return null
-                Assert.Equal(0, blackList.Count); // "Expected to have no assemblies in the black list"
-                Assert.Equal(0, whiteListErrors.Count); // "Expected there to be no error in the whiteListErrors"
-                Assert.Equal(0, whiteListErrorFileNames.Count); // "Expected there to be no error in the whiteListErrorFileNames"
+                Assert.Empty(blackList); // "Expected to have no assemblies in the black list"
+                Assert.Empty(whiteListErrors); // "Expected there to be no error in the whiteListErrors"
+                Assert.Empty(whiteListErrorFileNames); // "Expected there to be no error in the whiteListErrorFileNames"
             }
             finally
             {
@@ -6259,12 +6191,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 RedistList redistList = RedistList.GetRedistList(new AssemblyTableInfo[] { redistListInfo });
                 List<Exception> whiteListErrors = new List<Exception>();
                 List<string> whiteListErrorFilesNames = new List<string>();
-                Hashtable blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFilesNames);
+                Dictionary<string, string> blackList = redistList.GenerateBlackList(new AssemblyTableInfo[] { subsetListInfo }, whiteListErrors, whiteListErrorFilesNames);
 
                 // Since there were no white list expect the black list to return null
-                Assert.Equal(0, blackList.Count); // "Expected to have no assemblies in the black list"
-                Assert.Equal(0, whiteListErrors.Count); // "Expected there to be no error in the whiteListErrors"
-                Assert.Equal(0, whiteListErrorFilesNames.Count); // "Expected there to be no error in the whiteListErrorFileNames"
+                Assert.Empty(blackList); // "Expected to have no assemblies in the black list"
+                Assert.Empty(whiteListErrors); // "Expected there to be no error in the whiteListErrors"
+                Assert.Empty(whiteListErrorFilesNames); // "Expected there to be no error in the whiteListErrorFileNames"
             }
             finally
             {
@@ -6306,27 +6238,23 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             SubsetListFinder finder = new SubsetListFinder(new string[0]);
             string[] returnArray = finder.GetSubsetListPathsFromDisk("FrameworkDirectory");
-            Assert.Equal(0, returnArray.Length); // "Expected the array returned to be 0 length"
+            Assert.Empty(returnArray); // "Expected the array returned to be 0 length"
         }
 
 
         /// <summary>
-        /// Verify that the method will not crash if there are empty string array elements, and that when we call the
-        /// method twice with the same set of SubsetToSearchFor and TargetFrameworkDirectory that we get the exact same array back.
+        /// Verify that the method will not crash if there are empty string array elements
         /// </summary>
         [Fact]
-        public void SubsetListFinderVerifyEmptyInSubsetsToSearchForAndCaching()
+        public void SubsetListFinderVerifyEmptyInSubsetsToSearchFor()
         {
-            // Verify the program will not crash when an empty string is passed in and that when we call the method twice that we get the
-            // exact same array of strings back.
+            // Verify the program will not crash when an empty string is passed in
             SubsetListFinder finder = new SubsetListFinder(new string[] { "Clent", string.Empty, "Bar" });
             string[] returnArray = finder.GetSubsetListPathsFromDisk("FrameworkDirectory");
             string[] returnArray2 = finder.GetSubsetListPathsFromDisk("FrameworkDirectory");
 
-            Assert.True(Object.ReferenceEquals(returnArray, returnArray2)); // "Expected the string arrays to be the exact same reference"
-            // Verify that if i call the method again with a different target framework directory that I get a different array back
-            string[] returnArray3 = finder.GetSubsetListPathsFromDisk("FrameworkDirectory2");
-            Assert.False(Object.ReferenceEquals(returnArray2, returnArray3)); // "Expected the string arrays to not be the exact same reference"
+            Assert.Empty(returnArray);
+            Assert.Equal(returnArray.Length, returnArray2.Length);
         }
 
         /// <summary>
@@ -6347,8 +6275,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 File.WriteAllText(fooXml, "Random File Contents");
                 SubsetListFinder finder = new SubsetListFinder(new string[] { "Client", "Foo" });
                 string[] returnArray = finder.GetSubsetListPathsFromDisk(frameworkDirectory);
-                Assert.True(returnArray[0].Contains("Client.xml")); // "Expected first element to contain Client.xml"
-                Assert.True(returnArray[1].Contains("Foo.xml")); // "Expected first element to contain Foo.xml"
+                Assert.Contains("Client.xml", returnArray[0]); // "Expected first element to contain Client.xml"
+                Assert.Contains("Foo.xml", returnArray[1]); // "Expected first element to contain Foo.xml"
                 Assert.Equal(2, returnArray.Length); // "Expected there to be two elements in the array"
             }
             finally
@@ -6375,7 +6303,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 File.WriteAllText(fooXml, "Random File Contents");
                 SubsetListFinder finder = new SubsetListFinder(new string[] { "Client", "Foo" });
                 string[] returnArray = finder.GetSubsetListPathsFromDisk(frameworkDirectory);
-                Assert.Equal(0, returnArray.Length); // "Expected there to be two elements in the array"
+                Assert.Empty(returnArray); // "Expected there to be two elements in the array"
             }
             finally
             {
@@ -6389,7 +6317,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -6462,8 +6390,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             }
 
             Assert.True(success); // "Expected no errors."
-            Assert.Equal(1, t.ResolvedFiles.Length); // "Expected one resolved assembly."
-            Assert.True(t.ResolvedFiles[0].ItemSpec.Contains("System.Xml")); // "Expected System.Xml to resolve."
+            Assert.Single(t.ResolvedFiles); // "Expected one resolved assembly."
+            Assert.Contains("System.Xml", t.ResolvedFiles[0].ItemSpec); // "Expected System.Xml to resolve."
         }
 
         /// <summary>
@@ -6485,8 +6413,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             referenceTable.MarkReferencesForExclusion(null);
             referenceTable.RemoveReferencesMarkedForExclusion(false, String.Empty);
             Dictionary<AssemblyNameExtension, Reference> table2 = referenceTable.References;
-            Assert.False(Object.ReferenceEquals(table, table2)); // "Expected hashtable to be a different instance"
-            Assert.Equal(2, table2.Count); // "Expected there to be two elements in the hashtable"
+            Assert.False(Object.ReferenceEquals(table, table2)); // "Expected Dictionary to be a different instance"
+            Assert.Equal(2, table2.Count); // "Expected there to be two elements in the Dictionary"
             Assert.True(table2.ContainsKey(engineAssemblyName)); // "Expected to find the engineAssemblyName in the referenceList"
             Assert.True(table2.ContainsKey(xmlAssemblyName)); // "Expected to find the xmlssemblyName in the referenceList"
         }
@@ -6507,11 +6435,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             table.Add(engineAssemblyName, new Reference(isWinMDFile, fileExists, getRuntimeVersion));
             table.Add(xmlAssemblyName, new Reference(isWinMDFile, fileExists, getRuntimeVersion));
 
-            referenceTable.MarkReferencesForExclusion(new Hashtable());
+            referenceTable.MarkReferencesForExclusion(new Dictionary<string, string>());
             referenceTable.RemoveReferencesMarkedForExclusion(false, String.Empty);
             Dictionary<AssemblyNameExtension, Reference> table2 = referenceTable.References;
-            Assert.False(Object.ReferenceEquals(table, table2)); // "Expected hashtable to be a different instance"
-            Assert.Equal(2, table2.Count); // "Expected there to be two elements in the hashtable"
+            Assert.False(Object.ReferenceEquals(table, table2)); // "Expected Dictionary to be a different instance"
+            Assert.Equal(2, table2.Count); // "Expected there to be two elements in the Dictionary"
             Assert.True(table2.ContainsKey(engineAssemblyName)); // "Expected to find the engineAssemblyName in the referenceList"
             Assert.True(table2.ContainsKey(xmlAssemblyName)); // "Expected to find the xmlssemblyName in the referenceList"
         }
@@ -6522,7 +6450,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         [Fact]
         public void ReferenceTablePrimaryItemInBlackList()
         {
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             ResolveAssemblyReference rar = new ResolveAssemblyReference();
             rar.BuildEngine = mockEngine;
 
@@ -6538,7 +6466,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             table.Add(engineAssemblyName, reference);
             table.Add(xmlAssemblyName, new Reference(isWinMDFile, fileExists, getRuntimeVersion));
 
-            Hashtable blackList = new Hashtable(StringComparer.OrdinalIgnoreCase);
+            var blackList = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             blackList[engineAssemblyName.FullName] = null;
             string[] targetFrameworks = new string[] { "Client", "Web" };
             string subSetName = ResolveAssemblyReference.GenerateSubSetName(targetFrameworks, null);
@@ -6548,8 +6476,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Dictionary<AssemblyNameExtension, Reference> table2 = referenceTable.References;
             string warningMessage = rar.Log.FormatResourceString("ResolveAssemblyReference.FailedToResolveReferenceBecausePrimaryAssemblyInExclusionList", taskItem.ItemSpec, subSetName);
-            Assert.False(Object.ReferenceEquals(table, table2)); // "Expected hashtable to be a different instance"
-            Assert.Equal(1, table2.Count); // "Expected there to be one elements in the hashtable"
+            Assert.False(Object.ReferenceEquals(table, table2)); // "Expected dictionary to be a different instance"
+            Assert.Single(table2); // "Expected there to be one elements in the dictionary"
             Assert.False(table2.ContainsKey(engineAssemblyName)); // "Expected to not find the engineAssemblyName in the referenceList"
             Assert.True(table2.ContainsKey(xmlAssemblyName)); // "Expected to find the xmlssemblyName in the referenceList"
             mockEngine.AssertLogContains(warningMessage);
@@ -6561,7 +6489,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         [Fact]
         public void ReferenceTablePrimaryItemInBlackListSpecificVersionTrue()
         {
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             ResolveAssemblyReference rar = new ResolveAssemblyReference();
             rar.BuildEngine = mockEngine;
 
@@ -6578,7 +6506,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             table.Add(engineAssemblyName, reference);
             table.Add(xmlAssemblyName, new Reference(isWinMDFile, fileExists, getRuntimeVersion));
 
-            Hashtable blackList = new Hashtable(StringComparer.OrdinalIgnoreCase);
+            var blackList = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             blackList[engineAssemblyName.FullName] = null;
             string[] targetFrameworks = new string[] { "Client", "Web" };
             string subSetName = ResolveAssemblyReference.GenerateSubSetName(targetFrameworks, null);
@@ -6587,8 +6515,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Dictionary<AssemblyNameExtension, Reference> table2 = referenceTable.References;
             string warningMessage = rar.Log.FormatResourceString("ResolveAssemblyReference.FailedToResolveReferenceBecausePrimaryAssemblyInExclusionList", taskItem.ItemSpec, subSetName);
-            Assert.False(Object.ReferenceEquals(table, table2)); // "Expected hashtable to be a different instance"
-            Assert.Equal(2, table2.Count); // "Expected there to be two elements in the hashtable"
+            Assert.False(Object.ReferenceEquals(table, table2)); // "Expected dictionary to be a different instance"
+            Assert.Equal(2, table2.Count); // "Expected there to be two elements in the dictionary"
             Assert.True(table2.ContainsKey(engineAssemblyName)); // "Expected to find the engineAssemblyName in the referenceList"
             Assert.True(table2.ContainsKey(xmlAssemblyName)); // "Expected to find the xmlssemblyName in the referenceList"
             mockEngine.AssertLogDoesntContain(warningMessage);
@@ -6601,10 +6529,10 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         public void TestGenerateFrameworkName()
         {
             string[] targetFrameworks = new string[] { "Client" };
-            Assert.True(string.Equals("Client", ResolveAssemblyReference.GenerateSubSetName(targetFrameworks, null), StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("Client", ResolveAssemblyReference.GenerateSubSetName(targetFrameworks, null));
 
             targetFrameworks = new string[] { "Client", "Framework" };
-            Assert.True(string.Equals("Client, Framework", ResolveAssemblyReference.GenerateSubSetName(targetFrameworks, null), StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("Client, Framework", ResolveAssemblyReference.GenerateSubSetName(targetFrameworks, null));
 
             targetFrameworks = new string[0];
             Assert.True(String.IsNullOrEmpty(ResolveAssemblyReference.GenerateSubSetName(targetFrameworks, null)));
@@ -6613,13 +6541,13 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Assert.True(String.IsNullOrEmpty(ResolveAssemblyReference.GenerateSubSetName(targetFrameworks, null)));
 
             ITaskItem[] installedSubSetTable = new ITaskItem[] { new TaskItem("c:\\foo\\Client.xml") };
-            Assert.True(string.Equals("Client", ResolveAssemblyReference.GenerateSubSetName(null, installedSubSetTable), StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("Client", ResolveAssemblyReference.GenerateSubSetName(null, installedSubSetTable));
 
             installedSubSetTable = new ITaskItem[] { new TaskItem("c:\\foo\\Client.xml"), new TaskItem("D:\\foo\\bar\\Framework.xml") };
-            Assert.True(string.Equals("Client, Framework", ResolveAssemblyReference.GenerateSubSetName(null, installedSubSetTable), StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("Client, Framework", ResolveAssemblyReference.GenerateSubSetName(null, installedSubSetTable));
 
             installedSubSetTable = new ITaskItem[] { new TaskItem("c:\\foo\\Client.xml"), new TaskItem("D:\\foo\\bar\\Framework2\\"), new TaskItem("D:\\foo\\bar\\Framework"), new TaskItem("Nothing") };
-            Assert.True(string.Equals("Client, Framework, Nothing", ResolveAssemblyReference.GenerateSubSetName(null, installedSubSetTable), StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("Client, Framework, Nothing", ResolveAssemblyReference.GenerateSubSetName(null, installedSubSetTable));
 
             installedSubSetTable = new ITaskItem[0];
             Assert.True(String.IsNullOrEmpty(ResolveAssemblyReference.GenerateSubSetName(null, installedSubSetTable)));
@@ -6630,7 +6558,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             targetFrameworks = new string[] { "Client", "Framework" };
             installedSubSetTable = new ITaskItem[] { new TaskItem("c:\\foo\\Mouse.xml"), new TaskItem("D:\\foo\\bar\\Man.xml") };
-            Assert.True(string.Equals("Client, Framework, Mouse, Man", ResolveAssemblyReference.GenerateSubSetName(targetFrameworks, installedSubSetTable), StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("Client, Framework, Mouse, Man", ResolveAssemblyReference.GenerateSubSetName(targetFrameworks, installedSubSetTable));
         }
 
         /// <summary>
@@ -6639,7 +6567,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         [Fact]
         public void ReferenceTablePrimaryItemInBlackListRemoveOnlyNoWarn()
         {
-            MockEngine mockEngine = new MockEngine();
+            MockEngine mockEngine = new MockEngine(_output);
             ResolveAssemblyReference rar = new ResolveAssemblyReference();
             rar.BuildEngine = mockEngine;
 
@@ -6655,7 +6583,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             table.Add(engineAssemblyName, reference);
             table.Add(xmlAssemblyName, new Reference(isWinMDFile, fileExists, getRuntimeVersion));
 
-            Hashtable blackList = new Hashtable(StringComparer.OrdinalIgnoreCase);
+            var blackList = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             blackList[engineAssemblyName.FullName] = null;
             referenceTable.MarkReferencesForExclusion(blackList);
             referenceTable.RemoveReferencesMarkedForExclusion(true, String.Empty);
@@ -6663,8 +6591,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Dictionary<AssemblyNameExtension, Reference> table2 = referenceTable.References;
             string subSetName = ResolveAssemblyReference.GenerateSubSetName(new string[] { }, null);
             string warningMessage = rar.Log.FormatResourceString("ResolveAssemblyReference.FailedToResolveReferenceBecausePrimaryAssemblyInExclusionList", taskItem.ItemSpec, subSetName);
-            Assert.False(Object.ReferenceEquals(table, table2)); // "Expected hashtable to be a different instance"
-            Assert.Equal(1, table2.Count); // "Expected there to be one elements in the hashtable"
+            Assert.False(Object.ReferenceEquals(table, table2)); // "Expected dictionary to be a different instance"
+            Assert.Single(table2); // "Expected there to be one elements in the dictionary"
             Assert.False(table2.ContainsKey(engineAssemblyName)); // "Expected to not find the engineAssemblyName in the referenceList"
             Assert.True(table2.ContainsKey(xmlAssemblyName)); // "Expected to find the xmlssemblyName in the referenceList"
             Assert.True(String.IsNullOrEmpty(mockEngine.Log));
@@ -6680,7 +6608,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             ReferenceTable referenceTable;
             MockEngine mockEngine;
             ResolveAssemblyReference rar;
-            Hashtable blackList;
+            Dictionary<string, string> blackList;
             AssemblyNameExtension engineAssemblyName = new AssemblyNameExtension("Microsoft.Build.Engine, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             AssemblyNameExtension dataAssemblyName = new AssemblyNameExtension("System.Data, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             AssemblyNameExtension sqlclientAssemblyName = new AssemblyNameExtension("System.SqlClient, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
@@ -6724,7 +6652,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             ReferenceTable referenceTable;
             MockEngine mockEngine;
             ResolveAssemblyReference rar;
-            Hashtable blackList;
+            Dictionary<string, string> blackList;
             AssemblyNameExtension engineAssemblyName = new AssemblyNameExtension("Microsoft.Build.Engine, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             AssemblyNameExtension dataAssemblyName = new AssemblyNameExtension("System.Data, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             AssemblyNameExtension sqlclientAssemblyName = new AssemblyNameExtension("System.SqlClient, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
@@ -6765,7 +6693,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             ReferenceTable referenceTable;
             MockEngine mockEngine;
             ResolveAssemblyReference rar;
-            Hashtable blackList;
+            Dictionary<string, string> blackList;
             AssemblyNameExtension engineAssemblyName = new AssemblyNameExtension("Microsoft.Build.Engine, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             AssemblyNameExtension xmlAssemblyName = new AssemblyNameExtension("System.Xml, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             Reference enginePrimaryReference = new Reference(isWinMDFile, fileExists, getRuntimeVersion);
@@ -6807,7 +6735,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             ReferenceTable referenceTable;
             MockEngine mockEngine;
             ResolveAssemblyReference rar;
-            Hashtable blackList;
+            Dictionary<string, string> blackList;
             AssemblyNameExtension engineAssemblyName = new AssemblyNameExtension("Microsoft.Build.Engine, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             AssemblyNameExtension xmlAssemblyName = new AssemblyNameExtension("System.Xml, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             AssemblyNameExtension dataAssemblyName = new AssemblyNameExtension("System.Data, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
@@ -6859,7 +6787,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             ReferenceTable referenceTable;
             MockEngine mockEngine;
             ResolveAssemblyReference rar;
-            Hashtable blackList;
+            Dictionary<string, string> blackList;
             AssemblyNameExtension engineAssemblyName = new AssemblyNameExtension("Microsoft.Build.Engine, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             AssemblyNameExtension dataAssemblyName = new AssemblyNameExtension("System.Data, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             AssemblyNameExtension sqlclientAssemblyName = new AssemblyNameExtension("System.SqlClient, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
@@ -6903,10 +6831,14 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         [Fact]
         public void ReferenceTableDependentItemsInBlackList4()
         {
-            ReferenceTable referenceTable = new ReferenceTable(null, false, false, false, false, new string[0], null, null, null, null, null, null, SystemProcessorArchitecture.None, fileExists, null, null, null, null, null, null, null, null, null, new Version("4.0"), null, null, null, true, false, null, null, false, null, WarnOrErrorOnTargetArchitectureMismatchBehavior.None, false, false, null);
+            ReferenceTable referenceTable = new ReferenceTable(null, false, false, false, false, new string[0], null, null, null, null, null, null, SystemProcessorArchitecture.None, fileExists, null, null, null,
+#if FEATURE_WIN32_REGISTRY
+                null, null, null,
+#endif
+                null, null, null, new Version("4.0"), null, null, null, true, false, null, null, false, null, WarnOrErrorOnTargetArchitectureMismatchBehavior.None, false, false, null);
             MockEngine mockEngine;
             ResolveAssemblyReference rar;
-            Hashtable blackList;
+            Dictionary<string, string> blackList;
             AssemblyNameExtension engineAssemblyName = new AssemblyNameExtension("Microsoft.Build.Engine, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             AssemblyNameExtension dataAssemblyName = new AssemblyNameExtension("System.Data, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             AssemblyNameExtension sqlclientAssemblyName = new AssemblyNameExtension("System.SqlClient, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
@@ -6954,7 +6886,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             ReferenceTable referenceTable;
             MockEngine mockEngine;
             ResolveAssemblyReference rar;
-            Hashtable blackList;
+            Dictionary<string, string> blackList;
             AssemblyNameExtension engineAssemblyName = new AssemblyNameExtension("Microsoft.Build.Engine, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             AssemblyNameExtension dataAssemblyName = new AssemblyNameExtension("System.Data, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             AssemblyNameExtension sqlclientAssemblyName = new AssemblyNameExtension("System.SqlClient, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
@@ -6990,7 +6922,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             string warningMessage3 = rar.Log.FormatResourceString("ResolveAssemblyReference.FailBecauseDependentAssemblyInExclusionList", taskItem2.ItemSpec, dataAssemblyName.FullName, subsetName);
 
             Dictionary<AssemblyNameExtension, Reference> table = referenceTable.References;
-            Assert.Equal(0, table.Count); // "Expected there to be two elements in the hashtable"
+            Assert.Empty(table); // "Expected there to be two elements in the dictionary"
             Assert.False(table.ContainsKey(sqlclientAssemblyName)); // "Expected to not find the sqlclientAssemblyName in the referenceList"
             Assert.False(table.ContainsKey(dataAssemblyName)); // "Expected to not to find the dataAssemblyName in the referenceList"
             Assert.False(table.ContainsKey(xmlAssemblyName)); // "Expected to find the xmlssemblyName in the referenceList"
@@ -7020,7 +6952,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             ReferenceTable referenceTable;
             MockEngine mockEngine;
             ResolveAssemblyReference rar;
-            Hashtable blackList;
+            Dictionary<string, string> blackList;
             AssemblyNameExtension engineAssemblyName = new AssemblyNameExtension("Microsoft.Build.Engine, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             AssemblyNameExtension dataAssemblyName = new AssemblyNameExtension("System.Data, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
             AssemblyNameExtension sqlclientAssemblyName = new AssemblyNameExtension("System.SqlClient, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
@@ -7059,7 +6991,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             string notExpectedwarningMessage2 = rar.Log.FormatResourceString("ResolveAssemblyReference.FailBecauseDependentAssemblyInExclusionList", taskItem.ItemSpec, sqlclientAssemblyName.FullName, subsetName);
 
             Dictionary<AssemblyNameExtension, Reference> table = referenceTable.References;
-            Assert.Equal(3, table.Count); // "Expected there to be three elements in the hashtable"
+            Assert.Equal(3, table.Count); // "Expected there to be three elements in the dictionary"
             Assert.True(table.ContainsKey(sqlclientAssemblyName)); // "Expected to find the sqlclientAssemblyName in the referenceList"
             Assert.True(table.ContainsKey(dataAssemblyName)); // "Expected to find the dataAssemblyName in the referenceList"
             Assert.False(table.ContainsKey(xmlAssemblyName)); // "Expected not to find the xmlssemblyName in the referenceList"
@@ -7079,7 +7011,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
         private static ReferenceTable MakeEmptyReferenceTable(TaskLoggingHelper log)
         {
-            ReferenceTable referenceTable = new ReferenceTable(null, false, false, false, false, new string[0], null, null, null, null, null, null, SystemProcessorArchitecture.None, fileExists, null, null, null, null, null, null, null, null, null, new Version("4.0"), null, log, null, true, false, null, null, false, null, WarnOrErrorOnTargetArchitectureMismatchBehavior.None, false, false, null);
+            ReferenceTable referenceTable = new ReferenceTable(null, false, false, false, false, new string[0], null, null, null, null, null, null, SystemProcessorArchitecture.None, fileExists, null, null, null, null,
+#if FEATURE_WIN32_REGISTRY
+                null, null, null,
+#endif
+                null, null, new Version("4.0"), null, log, null, true, false, null, null, false, null, WarnOrErrorOnTargetArchitectureMismatchBehavior.None, false, false, null);
             return referenceTable;
         }
 
@@ -7090,7 +7026,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         private static void VerifyReferenceTable(ReferenceTable referenceTable, MockEngine mockEngine, AssemblyNameExtension engineAssemblyName, AssemblyNameExtension dataAssemblyName, AssemblyNameExtension sqlclientAssemblyName, AssemblyNameExtension xmlAssemblyName, string[] warningMessages)
         {
             Dictionary<AssemblyNameExtension, Reference> table = referenceTable.References;
-            Assert.Equal(0, table.Count); // "Expected there to be zero elements in the hashtable"
+            Assert.Empty(table); // "Expected there to be zero elements in the dictionary"
 
             if (warningMessages != null)
             {
@@ -7151,7 +7087,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             MockEngine mockEngine;
             ResolveAssemblyReference rar;
-            InitializeRARwithMockEngine(out mockEngine, out rar);
+            InitializeRARwithMockEngine(_output, out mockEngine, out rar);
 
             rar.TargetFrameworkSubsets = new string[] { "Client" };
             rar.ProfileName = "Client";
@@ -7168,7 +7104,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             MockEngine mockEngine;
             ResolveAssemblyReference rar;
-            InitializeRARwithMockEngine(out mockEngine, out rar);
+            InitializeRARwithMockEngine(_output, out mockEngine, out rar);
 
             rar.InstalledAssemblySubsetTables = new ITaskItem[] { new TaskItem("Client.xml") };
             rar.ProfileName = "Client";
@@ -7187,7 +7123,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             MockEngine mockEngine;
             ResolveAssemblyReference rar;
-            InitializeRARwithMockEngine(out mockEngine, out rar);
+            InitializeRARwithMockEngine(_output, out mockEngine, out rar);
             rar.ProfileName = "Client";
             Assert.False(rar.Execute());
             mockEngine.AssertLogContains(rar.Log.FormatResourceString("ResolveAssemblyReference.MustSetProfileNameAndFolderLocations"));
@@ -7202,7 +7138,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             MockEngine mockEngine;
             ResolveAssemblyReference rar;
-            InitializeRARwithMockEngine(out mockEngine, out rar);
+            InitializeRARwithMockEngine(_output, out mockEngine, out rar);
             TaskItem item = new TaskItem("Client.xml");
             rar.ProfileName = "Client";
             rar.FullFrameworkAssemblyTables = new ITaskItem[] { item };
@@ -7210,9 +7146,9 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             mockEngine.AssertLogContains(rar.Log.FormatResourceString("ResolveAssemblyReference.FrameworkDirectoryOnProfiles", item.ItemSpec));
         }
 
-        private static void InitializeRARwithMockEngine(out MockEngine mockEngine, out ResolveAssemblyReference rar)
+        private static void InitializeRARwithMockEngine(ITestOutputHelper output, out MockEngine mockEngine, out ResolveAssemblyReference rar)
         {
-            mockEngine = new MockEngine();
+            mockEngine = new MockEngine(output);
             rar = new ResolveAssemblyReference();
             rar.BuildEngine = mockEngine;
         }
@@ -7249,7 +7185,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// </summary>
         private void InitializeMockEngine(out ReferenceTable referenceTable, out MockEngine mockEngine, out ResolveAssemblyReference rar)
         {
-            mockEngine = new MockEngine();
+            mockEngine = new MockEngine(_output);
             rar = new ResolveAssemblyReference();
             rar.BuildEngine = mockEngine;
 
@@ -7260,9 +7196,9 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         /// <summary>
         ///Initialize the black list and use it to remove references from the reference table
         /// </summary>
-        private void InitializeExclusionList(ReferenceTable referenceTable, AssemblyNameExtension[] assembliesForBlackList, out Hashtable blackList)
+        private void InitializeExclusionList(ReferenceTable referenceTable, AssemblyNameExtension[] assembliesForBlackList, out Dictionary<string, string> blackList)
         {
-            blackList = new Hashtable(StringComparer.OrdinalIgnoreCase);
+            blackList = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (AssemblyNameExtension assemblyName in assembliesForBlackList)
             {
                 blackList[assemblyName.FullName] = null;
@@ -7310,7 +7246,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 explicitSubsetListPath = ObjectModelHelpers.CreateFileInTempProjectDirectory("v3.5\\SubsetList\\ExplicitList.xml", _xmlOnlySubset);
 
                 ResolveAssemblyReference t = new ResolveAssemblyReference();
-                t.BuildEngine = new MockEngine();
+                t.BuildEngine = new MockEngine(_output);
                 t.Assemblies = new ITaskItem[] { new TaskItem("Microsoft.Build.Engine"), new TaskItem("System.Xml") };
                 t.SearchPaths = new string[] { @"{TargetFrameworkDirectory}" };
 
@@ -7328,8 +7264,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 bool success = GenerateHelperDelegatesAndExecuteTask(t, microsoftBuildEnginePath, systemXmlPath);
 
                 Assert.True(success); // "Expected no errors."
-                Assert.Equal(1, t.ResolvedFiles.Length); // "Expected one resolved assembly."
-                Assert.True(t.ResolvedFiles[0].ItemSpec.Contains("System.Xml")); // "Expected System.Xml to resolve."
+                Assert.Single(t.ResolvedFiles); // "Expected one resolved assembly."
+                Assert.Contains("System.Xml", t.ResolvedFiles[0].ItemSpec); // "Expected System.Xml to resolve."
             }
             finally
             {
@@ -7395,7 +7331,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             try
             {
                 ResolveAssemblyReference t = new ResolveAssemblyReference();
-                t.BuildEngine = new MockEngine();
+                t.BuildEngine = new MockEngine(_output);
                 // These are the assemblies we are going to try and resolve
                 t.Assemblies = new ITaskItem[] { new TaskItem("Microsoft.Build.Engine"), new TaskItem("System.Xml") };
                 t.SearchPaths = new string[] { @"{TargetFrameworkDirectory}" };
@@ -7419,8 +7355,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 bool success = GenerateHelperDelegatesAndExecuteTask(t, microsoftBuildEnginePath, systemXmlPath);
 
                 Assert.True(success); // "Expected no errors."
-                Assert.Equal(1, t.ResolvedFiles.Length); // "Expected one resolved assembly."
-                Assert.True(t.ResolvedFiles[0].ItemSpec.Contains("System.Xml")); // "Expected System.Xml to resolve."
+                Assert.Single(t.ResolvedFiles); // "Expected one resolved assembly."
+                Assert.Contains("System.Xml", t.ResolvedFiles[0].ItemSpec); // "Expected System.Xml to resolve."
                 MockEngine engine = ((MockEngine)t.BuildEngine);
                 engine.AssertLogContains(t.Log.FormatResourceString("ResolveAssemblyReference.UsingExclusionList"));
             }
@@ -7480,7 +7416,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             try
             {
                 ResolveAssemblyReference t = new ResolveAssemblyReference();
-                t.BuildEngine = new MockEngine();
+                t.BuildEngine = new MockEngine(_output);
                 // These are the assemblies we are going to try and resolve
                 t.Assemblies = new ITaskItem[] { new TaskItem("Microsoft.Build.Engine"), new TaskItem("System.Xml") };
                 t.SearchPaths = new string[] { @"{TargetFrameworkDirectory}" };
@@ -7500,8 +7436,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 engine.AssertLogContains(t.Log.FormatResourceString("ResolveAssemblyReference.UsingExclusionList"));
                 engine.AssertLogContains(t.Log.FormatResourceString("ResolveAssemblyReference.NoSubsetsFound"));
                 Assert.Equal(2, t.ResolvedFiles.Length); // "Expected one resolved assembly."
-                Assert.True(t.ResolvedFiles[1].ItemSpec.Contains("System.Xml")); // "Expected System.Xml to resolve."
-                Assert.True(t.ResolvedFiles[0].ItemSpec.Contains("Microsoft.Build.Engine")); // "Expected Microsoft.Build.Engine to resolve."
+                Assert.Contains("System.Xml", t.ResolvedFiles[1].ItemSpec); // "Expected System.Xml to resolve."
+                Assert.Contains("Microsoft.Build.Engine", t.ResolvedFiles[0].ItemSpec); // "Expected Microsoft.Build.Engine to resolve."
             }
             finally
             {
@@ -7520,7 +7456,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             try
             {
                 ResolveAssemblyReference t = new ResolveAssemblyReference();
-                t.BuildEngine = new MockEngine();
+                t.BuildEngine = new MockEngine(_output);
 
                 // These are the assemblies we are going to try and resolve
                 t.Assemblies = new ITaskItem[] { new TaskItem("System.Xml") };
@@ -7554,7 +7490,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             try
             {
                 ResolveAssemblyReference t = new ResolveAssemblyReference();
-                t.BuildEngine = new MockEngine();
+                t.BuildEngine = new MockEngine(_output);
                 // These are the assemblies we are going to try and resolve
                 t.Assemblies = new ITaskItem[] { new TaskItem("System.Xml") };
 
@@ -7590,7 +7526,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             try
             {
                 ResolveAssemblyReference t = new ResolveAssemblyReference();
-                t.BuildEngine = new MockEngine();
+                t.BuildEngine = new MockEngine(_output);
                 // These are the assemblies we are going to try and resolve
                 t.Assemblies = new ITaskItem[] { new TaskItem("System.Xml") };
 
@@ -7620,7 +7556,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         private static void VerifyReferenceTable(ReferenceTable referenceTable, MockEngine mockEngine, AssemblyNameExtension engineAssemblyName, AssemblyNameExtension dataAssemblyName, AssemblyNameExtension sqlclientAssemblyName, AssemblyNameExtension xmlAssemblyName, string warningMessage, string warningMessage2)
         {
             IDictionary<AssemblyNameExtension, Reference> table = referenceTable.References;
-            Assert.Equal(3, table.Count); // "Expected there to be three elements in the hashtable"
+            Assert.Equal(3, table.Count); // "Expected there to be three elements in the dictionary"
             Assert.False(table.ContainsKey(sqlclientAssemblyName)); // "Expected to not find the sqlclientAssemblyName in the referenceList"
             Assert.True(table.ContainsKey(xmlAssemblyName)); // "Expected to find the xmlssemblyName in the referenceList"
             Assert.True(table.ContainsKey(dataAssemblyName)); // "Expected to find the dataAssemblyName in the referenceList"
@@ -7693,7 +7629,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             {
                 ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-                t.BuildEngine = new MockEngine();
+                t.BuildEngine = new MockEngine(_output);
 
                 t.Assemblies = new ITaskItem[]
             {
@@ -7750,8 +7686,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 }
 
                 Assert.True(success); // "Expected no errors."
-                Assert.Equal(1, t.ResolvedFiles.Length); // "Expected one resolved assembly."
-                Assert.True(t.ResolvedFiles[0].ItemSpec.Contains("System.Xml")); // "Expected System.Xml to resolve."
+                Assert.Single(t.ResolvedFiles); // "Expected one resolved assembly."
+                Assert.Contains("System.Xml", t.ResolvedFiles[0].ItemSpec); // "Expected System.Xml to resolve."
             }
             finally
             {
@@ -7777,7 +7713,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -7809,7 +7745,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -7826,84 +7762,6 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
             Execute(t);
         }
-
-        /// <summary>
-        /// Consider this dependency chain:
-        ///
-        /// App
-        ///   References - Microsoft.Office.Interop.Excel
-        ///        Depends on Office, Version=12.0.0.0, Culture=neutral, PublicKeyToken=71e9bce111e9429c
-        ///
-        ///   References - MS.Internal.Test.Automation.Office.Excel
-        ///        Depends on Office, Version=12.0.0.0, Culture=neutral, PublicKeyToken=94de0004b6e3fcc5
-        ///
-        /// Notice that the two primaries have dependencies that only differ by PKT. Suggested redirects should
-        /// only happen if the two assemblies differ by nothing but version.
-        /// </summary>
-        [Fact]
-        public void Regress313747_FalseSuggestedRedirectsWhenAssembliesDifferOnlyByPkt()
-        {
-            ResolveAssemblyReference t = new ResolveAssemblyReference();
-
-            MockEngine e = new MockEngine();
-            t.BuildEngine = e;
-
-            t.Assemblies = new ITaskItem[]
-            {
-                new TaskItem("Microsoft.Office.Interop.Excel"),
-                new TaskItem("MS.Internal.Test.Automation.Office.Excel")
-            };
-
-            t.SearchPaths = new string[]
-            {
-                @"c:\Regress313747",
-            };
-
-            Execute(t);
-
-            Assert.Equal(0, t.SuggestedRedirects.Length);
-        }
-
-        /// <summary>
-        /// Consider this dependency chain:
-        ///
-        /// (1) Primary reference A v 2.0.0.0 is found.
-        /// (2) Primary reference B is found.
-        /// (3) Primary reference B depends on A v 1.0.0.0
-        /// (4) Dependency A v 1.0.0.0 is not found.
-        /// (5) App.Config does not contain a binding redirect from A v 1.0.0.0 -> 2.0.0.0
-        ///
-        /// We need to warn and suggest an app.config entry because the runtime environment will require a binding
-        /// redirect to function. Without a binding redirect, loading B will cause A.V1 to try to load. It won't be
-        /// there and there won't be a binding redirect to point it at 2.0.0.0.
-        /// </summary>
-        [Fact]
-        [Trait("Category", "mono-osx-failing")]
-        public void Regress442570_MissingBackVersionShouldWarn()
-        {
-            ResolveAssemblyReference t = new ResolveAssemblyReference();
-
-            MockEngine e = new MockEngine();
-            t.BuildEngine = e;
-
-            t.Assemblies = new ITaskItem[]
-            {
-                new TaskItem("A"),
-                new TaskItem("B")
-            };
-
-            t.SearchPaths = new string[]
-            {
-                @"c:\Regress442570",
-            };
-
-            Execute(t);
-
-            // Expect a suggested redirect plus a warning
-            Assert.Equal(1, t.SuggestedRedirects.Length);
-            Assert.Equal(1, e.Warnings);
-        }
-
 
         /// Consider this dependency chain:
         ///
@@ -7923,7 +7781,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -7950,7 +7808,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -7983,7 +7841,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new ITaskItem[]
@@ -8007,100 +7865,13 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
             Assert.True(ContainsItem(t.ResolvedFiles, @"C:\Regress393931\A.metadata_dll")); // "Expected A.dll to be resolved."
         }
 
-
-        /// <summary>
-        /// Consider this dependency chain:
-        ///
-        /// App
-        ///   References - A
-        ///        Depends on D version 1 (but PKT=null)
-        ///   References - B
-        ///        Depends on D version 2 (but PKT=null)
-        ///
-        /// There should be no suggested redirect because only strongly named assemblies can have
-        /// binding redirects.
-        /// </summary>
-        [Fact]
-        [Trait("Category", "mono-osx-failing")]
-        public void Regress387218_UnificationRequiresStrongName()
-        {
-            ResolveAssemblyReference t = new ResolveAssemblyReference();
-
-            MockEngine e = new MockEngine();
-            t.BuildEngine = e;
-
-            t.Assemblies = new ITaskItem[]
-            {
-                new TaskItem("A"),
-                new TaskItem("B")
-            };
-
-            t.SearchPaths = new string[]
-            {
-                @"c:\Regress387218",
-                @"c:\Regress387218\v1",
-                @"c:\Regress387218\v2"
-            };
-
-            Execute(t);
-
-            Assert.Equal(2, t.ResolvedDependencyFiles.Length);
-            Assert.True(ContainsItem(t.ResolvedDependencyFiles, @"c:\Regress387218\v2\D.dll")); // "Expected to find assembly, but didn't."
-            Assert.True(ContainsItem(t.ResolvedDependencyFiles, @"c:\Regress387218\v1\D.dll")); // "Expected to find assembly, but didn't."
-            Assert.Equal(0, t.SuggestedRedirects.Length);
-            Assert.Equal(0, e.Warnings); // "Should only be no warning about suggested redirects."
-        }
-
-        /// <summary>
-        /// Consider this dependency chain:
-        ///
-        /// App
-        ///   References - A
-        ///        Depends on D version 1 (but Culture=fr)
-        ///   References - B
-        ///        Depends on D version 2 (but Culture=en)
-        ///
-        /// There should be no suggested redirect because assemblies with different cultures cannot unify.
-        /// </summary>
-        [Fact]
-        [Trait("Category", "mono-osx-failing")]
-        public void Regress390219_UnificationRequiresSameCulture()
-        {
-            ResolveAssemblyReference t = new ResolveAssemblyReference();
-
-            MockEngine e = new MockEngine();
-            t.BuildEngine = e;
-
-            t.Assemblies = new ITaskItem[]
-            {
-                new TaskItem("A"),
-                new TaskItem("B")
-            };
-
-            t.SearchPaths = new string[]
-            {
-                @"c:\Regress390219",
-                @"c:\Regress390219\v1",
-                @"c:\Regress390219\v2"
-            };
-
-            Execute(t);
-
-            Assert.Equal(2, t.ResolvedDependencyFiles.Length);
-            Assert.True(ContainsItem(t.ResolvedDependencyFiles, @"c:\Regress390219\v2\D.dll")); // "Expected to find assembly, but didn't."
-            Assert.True(ContainsItem(t.ResolvedDependencyFiles, @"c:\Regress390219\v1\D.dll")); // "Expected to find assembly, but didn't."
-            Assert.Equal(0, t.SuggestedRedirects.Length);
-            Assert.Equal(0, e.Warnings); // "Should only be no warning about suggested redirects."
-        }
-
-
         [Fact]
         [Trait("Category", "mono-osx-failing")]
         public void SGenDependeicies()
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.Assemblies = new TaskItem[]
@@ -8145,7 +7916,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            MockEngine e = new MockEngine();
+            MockEngine e = new MockEngine(_output);
             t.BuildEngine = e;
 
             t.AssemblyFiles = new ITaskItem[]
@@ -8188,7 +7959,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
 
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
 
             t.Assemblies = new ITaskItem[]
             {
@@ -8242,7 +8013,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         private int RunTargetFrameworkFilteringTest(string projectTargetFramework)
         {
             ResolveAssemblyReference t = new ResolveAssemblyReference();
-            t.BuildEngine = new MockEngine();
+            t.BuildEngine = new MockEngine(_output);
             t.Assemblies = new ITaskItem[]
             {
                 new TaskItem("A"),
@@ -8317,16 +8088,16 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
         {
             int resultSet = 0;
             resultSet = RunTargetFrameworkFilteringTest("3.0");
-            Assert.Equal(resultSet, 0x3); // "Expected assemblies A & B to be found."
+            Assert.Equal(0x3, resultSet); // "Expected assemblies A & B to be found."
 
             resultSet = RunTargetFrameworkFilteringTest("3.5");
-            Assert.Equal(resultSet, 0x7); // "Expected assemblies A, B & C to be found."
+            Assert.Equal(0x7, resultSet); // "Expected assemblies A, B & C to be found."
 
             resultSet = RunTargetFrameworkFilteringTest(null);
-            Assert.Equal(resultSet, 0x7); // "Expected assemblies A, B & C to be found."
+            Assert.Equal(0x7, resultSet); // "Expected assemblies A, B & C to be found."
 
             resultSet = RunTargetFrameworkFilteringTest("2.0");
-            Assert.Equal(resultSet, 0x1); // "Expected only assembly A to be found."
+            Assert.Equal(0x1, resultSet); // "Expected only assembly A to be found."
         }
 
         /// <summary>
@@ -8355,8 +8126,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 AssemblyTableInfo tableInfo = new AssemblyTableInfo(redistFile, "DoesNotExist");
                 RedistList redist = RedistList.GetRedistList(new AssemblyTableInfo[] { tableInfo });
 
-                AssemblyEntry[] entryArray = redist.FindAssemblyNameFromSimpleName("System");
-                Assert.Equal(6, entryArray.Length);
+                List<AssemblyEntry> entryArray = redist.FindAssemblyNameFromSimpleName("System").ToList();
+                Assert.Equal(6, entryArray.Count);
                 AssemblyNameExtension a1 = new AssemblyNameExtension(entryArray[0].FullName);
                 AssemblyNameExtension a2 = new AssemblyNameExtension(entryArray[1].FullName);
                 AssemblyNameExtension a3 = new AssemblyNameExtension(entryArray[2].FullName);
@@ -8364,12 +8135,12 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 AssemblyNameExtension a5 = new AssemblyNameExtension(entryArray[4].FullName);
                 AssemblyNameExtension a6 = new AssemblyNameExtension(entryArray[5].FullName);
 
-                Assert.True(a1.Version.Equals(new Version("100.0.0.0")), "Expect to find version 100.0.0.0 but instead found:" + a1.Version);
-                Assert.True(a2.Version.Equals(new Version("10.0.0.0")), "Expect to find version 10.0.0.0 but instead found:" + a2.Version);
-                Assert.True(a3.Version.Equals(new Version("4.0.0.0")), "Expect to find version 4.0.0.0 but instead found:" + a3.Version);
-                Assert.True(a4.Version.Equals(new Version("3.0.0.0")), "Expect to find version 3.0.0.0 but instead found:" + a4.Version);
-                Assert.True(a5.Version.Equals(new Version("2.0.0.0")), "Expect to find version 2.0.0.0 but instead found:" + a5.Version);
-                Assert.True(a6.Version.Equals(new Version("1.0.0.0")), "Expect to find version 1.0.0.0 but instead found:" + a6.Version);
+                Assert.Equal(new Version("100.0.0.0"), a1.Version);
+                Assert.Equal(new Version("10.0.0.0"), a2.Version);
+                Assert.Equal(new Version("4.0.0.0"), a3.Version);
+                Assert.Equal(new Version("3.0.0.0"), a4.Version);
+                Assert.Equal(new Version("2.0.0.0"), a5.Version);
+                Assert.Equal(new Version("1.0.0.0"), a6.Version);
             }
             finally
             {
@@ -8632,7 +8403,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 GenerateRedistAndProfileXmlLocations(fullRedistListContents, _engineOnlySubset, out profileRedistList, out fullRedistList, fullFrameworkDirectory, targetFrameworkDirectory);
 
                 ResolveAssemblyReference t = new ResolveAssemblyReference();
-                MockEngine e = new MockEngine();
+                MockEngine e = new MockEngine(_output);
                 t.BuildEngine = e;
                 t.AssemblyFiles = new ITaskItem[] { new TaskItem(Path.Combine(s_myComponentsMiscPath, "DependsOn9Also.dll")) };
                 t.SearchPaths = new string[] { @"{TargetFrameworkDirectory}", fullFrameworkDirectory };
@@ -8645,7 +8416,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
                 bool success = Execute(t, false);
                 Assert.True(success); // "Expected no errors."
-                Assert.Equal(0, t.ResolvedFiles.Length); // "Expected no resolved assemblies."
+                Assert.Empty(t.ResolvedFiles); // "Expected no resolved assemblies."
                 string warningMessage = t.Log.FormatResourceString("ResolveAssemblyReference.FailBecauseDependentAssemblyInExclusionList", Path.Combine(s_myComponentsMiscPath, "DependsOn9Also.dll"), "System, Version=9.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", t.TargetFrameworkMoniker);
                 e.AssertLogContains(warningMessage);
             }
@@ -8680,7 +8451,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 GenerateRedistAndProfileXmlLocations(fullRedistListContents, _engineOnlySubset, out profileRedistList, out fullRedistList, fullFrameworkDirectory, targetFrameworkDirectory);
 
                 ResolveAssemblyReference t = new ResolveAssemblyReference();
-                MockEngine e = new MockEngine();
+                MockEngine e = new MockEngine(_output);
                 t.BuildEngine = e;
                 TaskItem item = new TaskItem(Path.Combine(s_myComponentsMiscPath, "DependsOn9Also.dll"));
                 item.SetMetadata("SpecificVersion", "true");
@@ -8694,7 +8465,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
                 bool success = Execute(t);
                 Assert.True(success); // "Expected no errors."
-                Assert.Equal(1, t.ResolvedFiles.Length); // "Expected no resolved assemblies."
+                Assert.Single(t.ResolvedFiles); // "Expected no resolved assemblies."
                 string warningMessage = t.Log.FormatResourceString("ResolveAssemblyReference.FailBecauseDependentAssemblyInExclusionList", Path.Combine(s_myComponentsMiscPath, "DependsOn9Also.dll"), "System, Version=9.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", "Client");
                 e.AssertLogDoesntContain(warningMessage);
             }
@@ -8724,7 +8495,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 GenerateRedistAndProfileXmlLocations(_fullRedistListContents, _engineOnlySubset, out profileRedistList, out fullRedistList, fullFrameworkDirectory, targetFrameworkDirectory);
 
                 ResolveAssemblyReference t = new ResolveAssemblyReference();
-                MockEngine e = new MockEngine();
+                MockEngine e = new MockEngine(_output);
                 t.BuildEngine = e;
                 t.Assemblies = new ITaskItem[] { new TaskItem("Microsoft.Build.Engine"), new TaskItem("System.Xml") };
                 t.SearchPaths = new string[] { @"{TargetFrameworkDirectory}", fullFrameworkDirectory };
@@ -8739,8 +8510,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
                 bool success = GenerateHelperDelegatesAndExecuteTask(t, microsoftBuildEnginePath, systemXmlPath);
                 Assert.True(success); // "Expected no errors."
-                Assert.Equal(1, t.ResolvedFiles.Length); // "Expected one resolved assembly."
-                Assert.True(t.ResolvedFiles[0].ItemSpec.Contains("Microsoft.Build.Engine")); // "Expected Engine to resolve."
+                Assert.Single(t.ResolvedFiles); // "Expected one resolved assembly."
+                Assert.Contains("Microsoft.Build.Engine", t.ResolvedFiles[0].ItemSpec); // "Expected Engine to resolve."
                 e.AssertLogContains("MSB3252");
             }
             finally
@@ -8771,7 +8542,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 GenerateRedistAndProfileXmlLocations(_fullRedistListContents, _engineOnlySubset, out profileRedistList, out fullRedistList, fullFrameworkDirectory, targetFrameworkDirectory);
 
                 ResolveAssemblyReference t = new ResolveAssemblyReference();
-                MockEngine e = new MockEngine();
+                MockEngine e = new MockEngine(_output);
                 t.BuildEngine = e;
                 t.Assemblies = new ITaskItem[] { new TaskItem("Microsoft.Build.Engine"), new TaskItem("System.Xml") };
                 t.SearchPaths = new string[] { @"{TargetFrameworkDirectory}", fullFrameworkDirectory };
@@ -8789,8 +8560,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
 
                 bool success = GenerateHelperDelegatesAndExecuteTask(t, microsoftBuildEnginePath, systemXmlPath);
                 Assert.True(success); // "Expected no errors."
-                Assert.Equal(1, t.ResolvedFiles.Length); // "Expected one resolved assembly."
-                Assert.True(t.ResolvedFiles[0].ItemSpec.Contains("Microsoft.Build.Engine")); // "Expected Engine to resolve."
+                Assert.Single(t.ResolvedFiles); // "Expected one resolved assembly."
+                Assert.Contains("Microsoft.Build.Engine", t.ResolvedFiles[0].ItemSpec); // "Expected Engine to resolve."
                 e.AssertLogContains("MSB3252");
             }
             finally
@@ -8825,7 +8596,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 GenerateRedistAndProfileXmlLocations(fullRedistListContents, _engineOnlySubset, out profileRedistList, out fullRedistList, fullFrameworkDirectory, targetFrameworkDirectory);
 
                 ResolveAssemblyReference t = new ResolveAssemblyReference();
-                MockEngine e = new MockEngine();
+                MockEngine e = new MockEngine(_output);
                 t.BuildEngine = e;
                 TaskItem item = new TaskItem(@"DependsOnOnlyv4Assemblies, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b17a5c561934e089");
                 t.Assemblies = new ITaskItem[] { item };
@@ -8841,7 +8612,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 bool success = Execute(t, false);
                 Console.Out.WriteLine(e.Log);
                 Assert.True(success); // "Expected no errors."
-                Assert.Equal(0, t.ResolvedFiles.Length); // "Expected no files to resolved."
+                Assert.Empty(t.ResolvedFiles); // "Expected no files to resolved."
                 string warningMessage = t.Log.FormatResourceString("ResolveAssemblyReference.FailBecauseDependentAssemblyInExclusionList", "DependsOnOnlyv4Assemblies, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b17a5c561934e089", "SysTem, Version=9.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", t.TargetFrameworkMoniker);
                 e.AssertLogContains(warningMessage);
             }
@@ -8879,7 +8650,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests
                 GenerateRedistAndProfileXmlLocations(fullRedistListContentsErrors, _engineOnlySubset, out profileRedistList, out fullRedistList, fullFrameworkDirectory, targetFrameworkDirectory);
 
                 ResolveAssemblyReference t = new ResolveAssemblyReference();
-                MockEngine e = new MockEngine();
+                MockEngine e = new MockEngine(_output);
                 t.BuildEngine = e;
                 t.Assemblies = new ITaskItem[] { new TaskItem("Microsoft.Build.Engine"), new TaskItem("System.Xml") };
                 t.SearchPaths = new string[] { @"{TargetFrameworkDirectory}", fullFrameworkDirectory };

@@ -1,10 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Class containing the shared pieces of code from NodeProviderOutOfProc
-// and NodeProviderOutOfProcTaskHost.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
@@ -15,9 +10,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
-#if FEATURE_SECURITY_PERMISSIONS
 using System.Security.Permissions;
-#endif
 
 using Microsoft.Build.Shared;
 using Microsoft.Build.Exceptions;
@@ -25,6 +18,8 @@ using Microsoft.Build.Internal;
 
 using BackendNativeMethods = Microsoft.Build.BackEnd.NativeMethods;
 using System.Threading.Tasks;
+using Microsoft.Build.Shared.FileSystem;
+using Microsoft.Build.Utilities;
 
 namespace Microsoft.Build.BackEnd
 {
@@ -35,7 +30,7 @@ namespace Microsoft.Build.BackEnd
     internal abstract class NodeProviderOutOfProcBase
     {
         /// <summary>
-        /// The maximum number of bytes to write 
+        /// The maximum number of bytes to write
         /// </summary>
         private const int MaxPacketWriteSize = 1048576;
 
@@ -66,7 +61,7 @@ namespace Microsoft.Build.BackEnd
         internal delegate void NodeContextTerminateDelegate(int nodeId);
 
         /// <summary>
-        /// The build component host. 
+        /// The build component host.
         /// </summary>
         protected IBuildComponentHost ComponentHost
         {
@@ -112,20 +107,10 @@ namespace Microsoft.Build.BackEnd
         /// <param name="terminateNode">Delegate used to tell the node provider that a context has terminated</param>
         protected void ShutdownAllNodes(long hostHandshake, long clientHandshake, NodeContextTerminateDelegate terminateNode)
         {
-#if FEATURE_NAMED_PIPES_FULL_DUPLEX
             // INodePacketFactory
             INodePacketFactory factory = new NodePacketFactory();
 
-            // Find proper msbuild executable name
-            string msbuildExeName = Environment.GetEnvironmentVariable("MSBUILD_EXE_NAME");
-
-            if (String.IsNullOrEmpty(msbuildExeName))
-            {
-                msbuildExeName = "MSBuild.exe";
-            }
-
-            // Search for all instances of the msbuild process and create a list of them
-            List<Process> nodeProcesses = new List<Process>(Process.GetProcessesByName(Path.GetFileNameWithoutExtension(msbuildExeName)));
+            List<Process> nodeProcesses = GetPossibleRunningNodes();
 
             // Find proper MSBuildTaskHost executable name
             string msbuildtaskhostExeName = NodeProviderOutOfProcTaskHost.TaskHostNameForClr2TaskHost;
@@ -147,9 +132,6 @@ namespace Microsoft.Build.BackEnd
                     nodeStream.Dispose();
                 }
             }
-#else
-            throw new PlatformNotSupportedException("Shutting down nodes by enumerating processes and connecting to them is not supported when using anonymous pipes.");
-#endif
         }
 
         /// <summary>
@@ -176,56 +158,43 @@ namespace Microsoft.Build.BackEnd
 
                 if (!String.IsNullOrEmpty(msbuildExeName))
                 {
-                    // we assume that MSBUILD_EXE_NAME is, in fact, just the name.  
+                    // we assume that MSBUILD_EXE_NAME is, in fact, just the name.
                     msbuildLocation = Path.Combine(msbuildExeName, ".exe");
                 }
             }
 
-            if (String.IsNullOrEmpty(msbuildLocation))
-            {
-                msbuildLocation = "MSBuild.exe";
-            }
-
 #if FEATURE_NODE_REUSE
-            string msbuildName = Path.GetFileNameWithoutExtension(msbuildLocation);
-
-            List<Process> nodeProcesses = new List<Process>(Process.GetProcessesByName(msbuildName));
-
-            // Trivial sort to try to prefer most recently used nodes
-            nodeProcesses.Sort
-                (
-                delegate (Process left, Process right)
-                {
-                    return left.Id - right.Id;
-                }
-
-                );
-
-            CommunicationsUtilities.Trace("Attempting to connect to each existing msbuild.exe process in turn to establish node {0}...", nodeId);
-            foreach (Process nodeProcess in nodeProcesses)
+            // Try to connect to idle nodes if node reuse is enabled.
+            if (_componentHost.BuildParameters.EnableNodeReuse)
             {
-                if (nodeProcess.Id == Process.GetCurrentProcess().Id)
-                {
-                    continue;
-                }
+                var candidateProcesses = GetPossibleRunningNodes(msbuildLocation);
 
-                // Get the full context of this inspection so that we can always skip this process when we have the same taskhost context
-                string nodeLookupKey = GetProcessesToIgnoreKey(hostHandshake, clientHandshake, nodeProcess.Id);
-                if (_processesToIgnore.Contains(nodeLookupKey))
+                CommunicationsUtilities.Trace("Attempting to connect to each existing msbuild.exe process in turn to establish node {0}...", nodeId);
+                foreach (Process nodeProcess in candidateProcesses)
                 {
-                    continue;
-                }
+                    if (nodeProcess.Id == Process.GetCurrentProcess().Id)
+                    {
+                        continue;
+                    }
 
-                // We don't need to check this again
-                _processesToIgnore.Add(nodeLookupKey);
+                    // Get the full context of this inspection so that we can always skip this process when we have the same taskhost context
+                    string nodeLookupKey = GetProcessesToIgnoreKey(hostHandshake, clientHandshake, nodeProcess.Id);
+                    if (_processesToIgnore.Contains(nodeLookupKey))
+                    {
+                        continue;
+                    }
 
-                // Attempt to connect to each process in turn.
-                Stream nodeStream = TryConnectToProcess(nodeProcess.Id, 0 /* poll, don't wait for connections */, hostHandshake, clientHandshake);
-                if (nodeStream != null)
-                {
-                    // Connection successful, use this node.   
-                    CommunicationsUtilities.Trace("Successfully connected to existed node {0} which is PID {1}", nodeId, nodeProcess.Id);
-                    return new NodeContext(nodeId, nodeProcess.Id, nodeStream, factory, terminateNode);
+                    // We don't need to check this again
+                    _processesToIgnore.Add(nodeLookupKey);
+
+                    // Attempt to connect to each process in turn.
+                    Stream nodeStream = TryConnectToProcess(nodeProcess.Id, 0 /* poll, don't wait for connections */, hostHandshake, clientHandshake);
+                    if (nodeStream != null)
+                    {
+                        // Connection successful, use this node.
+                        CommunicationsUtilities.Trace("Successfully connected to existed node {0} which is PID {1}", nodeId, nodeProcess.Id);
+                        return new NodeContext(nodeId, nodeProcess.Id, nodeStream, factory, terminateNode);
+                    }
                 }
             }
 #endif
@@ -238,13 +207,13 @@ namespace Microsoft.Build.BackEnd
             int retries = NodeCreationRetries;
             while (retries-- > 0)
             {
-#if FEATURE_NODE_REUSE
+#if FEATURE_NET35_TASKHOST
                 // We will also check to see if .NET 3.5 is installed in the case where we need to launch a CLR2 OOP TaskHost.
                 // Failure to detect this has been known to stall builds when Windows pops up a related dialog.
                 // It's also a waste of time when we attempt several times to launch multiple MSBuildTaskHost.exe (CLR2 TaskHost)
                 // nodes because we should never be able to connect in this case.
                 string taskHostNameForClr2TaskHost = Path.GetFileNameWithoutExtension(NodeProviderOutOfProcTaskHost.TaskHostNameForClr2TaskHost);
-                if (msbuildName.Equals(taskHostNameForClr2TaskHost, StringComparison.OrdinalIgnoreCase))
+                if (Path.GetFileNameWithoutExtension(msbuildLocation).Equals(taskHostNameForClr2TaskHost, StringComparison.OrdinalIgnoreCase))
                 {
                     if (FrameworkLocationHelper.GetPathToDotNetFrameworkV35(DotNetFrameworkArchitecture.Current) == null)
                     {
@@ -255,23 +224,16 @@ namespace Microsoft.Build.BackEnd
                                 commandLineArgs
                             );
 
-                        string nodeFailedToLaunchError = ResourceUtilities.FormatResourceString("TaskHostNodeFailedToLaunchErrorCodeNet35NotInstalled");
+                        string nodeFailedToLaunchError = ResourceUtilities.GetResourceString("TaskHostNodeFailedToLaunchErrorCodeNet35NotInstalled");
                         throw new NodeFailedToLaunchException(null, nodeFailedToLaunchError);
                     }
                 }
-#endif
-#if !FEATURE_NAMED_PIPES_FULL_DUPLEX
-                var clientToServerStream = new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.Inheritable);
-                var serverToClientStream = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.Inheritable);
-
-                commandLineArgs += $" /clientToServerPipeHandle:{clientToServerStream.GetClientHandleAsString()} /serverToClientPipeHandle:{serverToClientStream.GetClientHandleAsString()}";
 #endif
 
                 // Create the node process
                 int msbuildProcessId = LaunchNode(msbuildLocation, commandLineArgs);
                 _processesToIgnore.Add(GetProcessesToIgnoreKey(hostHandshake, clientHandshake, msbuildProcessId));
 
-#if FEATURE_NAMED_PIPES_FULL_DUPLEX
                 // Note, when running under IMAGEFILEEXECUTIONOPTIONS registry key to debug, the process ID
                 // gotten back from CreateProcess is that of the debugger, which causes this to try to connect
                 // to the debugger process. Instead, use MSBUILDDEBUGONSTART=1
@@ -284,23 +246,28 @@ namespace Microsoft.Build.BackEnd
                     CommunicationsUtilities.Trace("Successfully connected to created node {0} which is PID {1}", nodeId, msbuildProcessId);
                     return new NodeContext(nodeId, msbuildProcessId, nodeStream, factory, terminateNode);
                 }
-#else
-                if (WaitForConnectionFromProcess(clientToServerStream, serverToClientStream, msbuildProcessId, hostHandshake, clientHandshake))
-                {
-                    // Connection successful, use this node.
-
-                    clientToServerStream.DisposeLocalCopyOfClientHandle();
-                    serverToClientStream.DisposeLocalCopyOfClientHandle();
-
-                    CommunicationsUtilities.Trace("Successfully connected to created node {0} which is PID {1}", nodeId, msbuildProcessId);
-                    return new NodeContext(nodeId, msbuildProcessId, clientToServerStream, serverToClientStream, factory, terminateNode);
-                }
-#endif
             }
 
             // We were unable to launch a node.
             CommunicationsUtilities.Trace("FAILED TO CONNECT TO A CHILD NODE");
             return null;
+        }
+
+        private List<Process> GetPossibleRunningNodes(string msbuildLocation = null)
+        {
+            if (String.IsNullOrEmpty(msbuildLocation))
+            {
+                msbuildLocation = "MSBuild.exe";
+            }
+
+            var expectedProcessName = Path.GetFileNameWithoutExtension(GetCurrentHost() ?? msbuildLocation);
+
+            List<Process> nodeProcesses = new List<Process>(Process.GetProcessesByName(expectedProcessName));
+
+            // Trivial sort to try to prefer most recently used nodes
+            nodeProcesses.Sort((left, right) => left.Id - right.Id);
+
+            return nodeProcesses;
         }
 
         /// <summary>
@@ -312,7 +279,7 @@ namespace Microsoft.Build.BackEnd
             return hostHandshake.ToString(CultureInfo.InvariantCulture) + "|" + clientHandshake.ToString(CultureInfo.InvariantCulture) + "|" + nodeProcessId.ToString(CultureInfo.InvariantCulture);
         }
 
-#if FEATURE_NAMED_PIPES_FULL_DUPLEX
+#if !FEATURE_PIPEOPTIONS_CURRENTUSERONLY
         //  This code needs to be in a separate method so that we don't try (and fail) to load the Windows-only APIs when JIT-ing the code
         //  on non-Windows operating systems
         private void ValidateRemotePipeSecurityOnWindows(NamedPipeClientStream nodeStream)
@@ -331,7 +298,7 @@ namespace Microsoft.Build.BackEnd
                 throw new UnauthorizedAccessException();
             }
         }
-
+#endif
 
         /// <summary>
         /// Attempts to connect to the specified process.
@@ -341,14 +308,18 @@ namespace Microsoft.Build.BackEnd
             // Try and connect to the process.
             string pipeName = "MSBuild" + nodeProcessId;
 
-            NamedPipeClientStream nodeStream = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+            NamedPipeClientStream nodeStream = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous
+#if FEATURE_PIPEOPTIONS_CURRENTUSERONLY
+                                                                         | PipeOptions.CurrentUserOnly
+#endif
+                                                                         );
             CommunicationsUtilities.Trace("Attempting connect to PID {0} with pipe {1} with timeout {2} ms", nodeProcessId, pipeName, timeout);
 
             try
             {
                 nodeStream.Connect(timeout);
 
-#if !MONO
+#if !MONO && !FEATURE_PIPEOPTIONS_CURRENTUSERONLY
                 if (NativeMethodsShared.IsWindows)
                 {
                     // Verify that the owner of the pipe is us.  This prevents a security hole where a remote node has
@@ -366,7 +337,11 @@ namespace Microsoft.Build.BackEnd
                 nodeStream.WriteLongForHandshake(hostHandshake);
 
                 CommunicationsUtilities.Trace("Reading handshake from pipe {0}", pipeName);
+#if NETCOREAPP2_1
+                long handshake = nodeStream.ReadLongForHandshake(timeout);
+#else
                 long handshake = nodeStream.ReadLongForHandshake();
+#endif
 
                 if (handshake != clientHandshake)
                 {
@@ -401,59 +376,18 @@ namespace Microsoft.Build.BackEnd
 
             return null;
         }
-#else
-        private bool WaitForConnectionFromProcess(AnonymousPipeServerStream clientToServerStream,
-                                                  AnonymousPipeServerStream serverToClientStream,
-                                                  int nodeProcessId, long hostHandshake, long clientHandshake)
-        {
-            try
-            {
-                CommunicationsUtilities.Trace("Attempting to handshake with PID {0}", nodeProcessId);
-
-                CommunicationsUtilities.Trace("Writing handshake to pipe");
-                serverToClientStream.WriteLongForHandshake(hostHandshake);
-
-                CommunicationsUtilities.Trace("Reading handshake from pipe");
-                long handshake = clientToServerStream.ReadLongForHandshake();
-
-                if (handshake != clientHandshake)
-                {
-                    CommunicationsUtilities.Trace("Handshake failed. Received {0} from client not {1}. Probably the client is a different MSBuild build.", handshake, clientHandshake);
-                    throw new InvalidOperationException();
-                }
-
-                // We got a connection.
-                CommunicationsUtilities.Trace("Successfully connected got connection from PID {0}...!", nodeProcessId);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                if (ExceptionHandling.IsCriticalException(ex))
-                {
-                    throw;
-                }
-
-                CommunicationsUtilities.Trace("Failed to get connection from PID {0}. {1}", nodeProcessId, ex.ToString());
-
-                clientToServerStream.Dispose();
-                serverToClientStream.Dispose();
-
-                return false;
-            }
-        }
-#endif
 
         /// <summary>
         /// Creates a new MSBuild process
         /// </summary>
         private int LaunchNode(string msbuildLocation, string commandLineArgs)
         {
-            // Should always have been set already. 
+            // Should always have been set already.
             ErrorUtilities.VerifyThrowInternalLength(msbuildLocation, "msbuildLocation");
 
-            if (!File.Exists(msbuildLocation))
+            if (!FileSystems.Default.FileExists(msbuildLocation))
             {
-                throw new BuildAbortedException(ResourceUtilities.FormatResourceString("CouldNotFindMSBuildExe", msbuildLocation));
+                throw new BuildAbortedException(ResourceUtilities.FormatResourceStringStripCodeAndKeyword("CouldNotFindMSBuildExe", msbuildLocation));
             }
 
             // Repeat the executable name as the first token of the command line because the command line
@@ -465,15 +399,25 @@ namespace Microsoft.Build.BackEnd
 
             // Null out the process handles so that the parent process does not wait for the child process
             // to exit before it can exit.
-            uint creationFlags = BackendNativeMethods.NORMALPRIORITYCLASS;
-            startInfo.dwFlags = BackendNativeMethods.STARTFUSESTDHANDLES;
+            uint creationFlags = 0;
+            if (Traits.Instance.EscapeHatches.EnsureStdOutForChildNodesIsPrimaryStdout)
+            {
+                creationFlags = BackendNativeMethods.NORMALPRIORITYCLASS;
+            }
 
             if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable("MSBUILDNODEWINDOW")))
             {
-                startInfo.hStdError = BackendNativeMethods.InvalidHandle;
-                startInfo.hStdInput = BackendNativeMethods.InvalidHandle;
-                startInfo.hStdOutput = BackendNativeMethods.InvalidHandle;
-                creationFlags = creationFlags | BackendNativeMethods.CREATENOWINDOW;
+                if (!Traits.Instance.EscapeHatches.EnsureStdOutForChildNodesIsPrimaryStdout)
+                {
+                    // Redirect the streams of worker nodes so that this MSBuild.exe's
+                    // parent doesn't wait on idle worker nodes to close streams
+                    // after the build is complete.
+                    startInfo.hStdError = BackendNativeMethods.InvalidHandle;
+                    startInfo.hStdInput = BackendNativeMethods.InvalidHandle;
+                    startInfo.hStdOutput = BackendNativeMethods.InvalidHandle;
+                    startInfo.dwFlags = BackendNativeMethods.STARTFUSESTDHANDLES;
+                    creationFlags = creationFlags | BackendNativeMethods.CREATENOWINDOW;
+                }
             }
             else
             {
@@ -487,76 +431,135 @@ namespace Microsoft.Build.BackEnd
 
             CommunicationsUtilities.Trace("Launching node from {0}", msbuildLocation);
 
+            string exeName = msbuildLocation;
+
 #if RUNTIME_TYPE_NETCORE
             // Run the child process with the same host as the currently-running process.
-            string pathToHost;
-            using (Process currentProcess = Process.GetCurrentProcess()) pathToHost = currentProcess.MainModule.FileName;
+            exeName = GetCurrentHost();
             commandLineArgs = "\"" + msbuildLocation + "\" " + commandLineArgs;
+#endif
 
-            ProcessStartInfo processStartInfo = new ProcessStartInfo();
-            processStartInfo.FileName = pathToHost;
-            processStartInfo.Arguments = commandLineArgs;
-            processStartInfo.CreateNoWindow = (creationFlags | BackendNativeMethods.CREATENOWINDOW) == BackendNativeMethods.CREATENOWINDOW;
-            processStartInfo.UseShellExecute = false;
-
-            Process process;
-            try
+            if (!NativeMethodsShared.IsWindows)
             {
-                process = Process.Start(processStartInfo);
+
+                ProcessStartInfo processStartInfo = new ProcessStartInfo();
+                processStartInfo.FileName = exeName;
+                processStartInfo.Arguments = commandLineArgs;
+                if (!Traits.Instance.EscapeHatches.EnsureStdOutForChildNodesIsPrimaryStdout)
+                {
+                    // Redirect the streams of worker nodes so that this MSBuild.exe's
+                    // parent doesn't wait on idle worker nodes to close streams
+                    // after the build is complete.
+                    processStartInfo.RedirectStandardInput = true;
+                    processStartInfo.RedirectStandardOutput = true;
+                    processStartInfo.RedirectStandardError = true;
+                    processStartInfo.CreateNoWindow = (creationFlags | BackendNativeMethods.CREATENOWINDOW) == BackendNativeMethods.CREATENOWINDOW;
+                }
+                processStartInfo.UseShellExecute = false;
+
+                Process process;
+                try
+                {
+                    process = Process.Start(processStartInfo);
+                }
+                catch (Exception ex)
+                {
+                    CommunicationsUtilities.Trace
+                       (
+                           "Failed to launch node from {0}. CommandLine: {1}" + Environment.NewLine + "{2}",
+                           msbuildLocation,
+                           commandLineArgs,
+                           ex.ToString()
+                       );
+
+                    throw new NodeFailedToLaunchException(ex);
+                }
+
+                CommunicationsUtilities.Trace("Successfully launched msbuild.exe node with PID {0}", process.Id);
+                return process.Id;
             }
-            catch (Exception ex)
+            else
             {
-                 CommunicationsUtilities.Trace
+#if RUNTIME_TYPE_NETCORE
+                if (NativeMethodsShared.IsWindows)
+                {
+                    // Repeat the executable name in the args to suit CreateProcess
+                    commandLineArgs = "\"" + exeName + "\" " + commandLineArgs;
+                }
+#endif
+
+                BackendNativeMethods.PROCESS_INFORMATION processInfo = new BackendNativeMethods.PROCESS_INFORMATION();
+
+                bool result = BackendNativeMethods.CreateProcess
                     (
-                        "Failed to launch node from {0}. CommandLine: {1}" + Environment.NewLine + "{2}",
-                        msbuildLocation,
+                        exeName,
                         commandLineArgs,
-                        ex.ToString()
+                        ref processSecurityAttributes,
+                        ref threadSecurityAttributes,
+                        false,
+                        creationFlags,
+                        BackendNativeMethods.NullPtr,
+                        null,
+                        ref startInfo,
+                        out processInfo
                     );
 
-                throw new NodeFailedToLaunchException(ex);
+                if (!result)
+                {
+                    // Creating an instance of this exception calls GetLastWin32Error and also converts it to a user-friendly string.
+                    System.ComponentModel.Win32Exception e = new System.ComponentModel.Win32Exception();
+
+                    CommunicationsUtilities.Trace
+                        (
+                            "Failed to launch node from {0}. System32 Error code {1}. Description {2}. CommandLine: {2}",
+                            msbuildLocation,
+                            e.NativeErrorCode.ToString(CultureInfo.InvariantCulture),
+                            e.Message,
+                            commandLineArgs
+                        );
+
+                    throw new NodeFailedToLaunchException(e.NativeErrorCode.ToString(CultureInfo.InvariantCulture), e.Message);
+                }
+
+                int childProcessId = processInfo.dwProcessId;
+
+                if (processInfo.hProcess != IntPtr.Zero && processInfo.hProcess != NativeMethods.InvalidHandle)
+                {
+                    NativeMethodsShared.CloseHandle(processInfo.hProcess);
+                }
+
+                if (processInfo.hThread != IntPtr.Zero && processInfo.hThread != NativeMethods.InvalidHandle)
+                {
+                    NativeMethodsShared.CloseHandle(processInfo.hThread);
+                }
+
+                CommunicationsUtilities.Trace("Successfully launched msbuild.exe node with PID {0}", childProcessId);
+                return childProcessId;
             }
-            
-            CommunicationsUtilities.Trace("Successfully launched msbuild.exe node with PID {0}", process.Id);
-            return process.Id;
-#else
-            BackendNativeMethods.PROCESS_INFORMATION processInfo = new BackendNativeMethods.PROCESS_INFORMATION();
+        }
 
-            string exeName = msbuildLocation;
-            
-            bool result = BackendNativeMethods.CreateProcess
-                (
-                    exeName,
-                    commandLineArgs,
-                    ref processSecurityAttributes,
-                    ref threadSecurityAttributes,
-                    false,
-                    creationFlags,
-                    BackendNativeMethods.NullPtr,
-                    null,
-                    ref startInfo,
-                    out processInfo
-                );
+#if RUNTIME_TYPE_NETCORE
+        private static string CurrentHost;
+#endif
 
-            if (!result)
+        /// <summary>
+        /// Identify the .NET host of the current process.
+        /// </summary>
+        /// <returns>The full path to the executable hosting the current process, or null if running on Full Framework on Windows.</returns>
+        private static string GetCurrentHost()
+        {
+#if RUNTIME_TYPE_NETCORE
+            if (CurrentHost == null)
             {
-                // Creating an instance of this exception calls GetLastWin32Error and also converts it to a user-friendly string.
-                System.ComponentModel.Win32Exception e = new System.ComponentModel.Win32Exception();
-
-                CommunicationsUtilities.Trace
-                    (
-                        "Failed to launch node from {0}. System32 Error code {1}. Description {2}. CommandLine: {2}",
-                        msbuildLocation,
-                        e.NativeErrorCode.ToString(CultureInfo.InvariantCulture),
-                        e.Message,
-                        commandLineArgs
-                    );
-
-                throw new NodeFailedToLaunchException(e.NativeErrorCode.ToString(CultureInfo.InvariantCulture), e.Message);
+                using (Process currentProcess = Process.GetCurrentProcess())
+                {
+                    CurrentHost = currentProcess.MainModule.FileName;
+                }
             }
 
-            CommunicationsUtilities.Trace("Successfully launched msbuild.exe node with PID {0}", processInfo.dwProcessId);
-            return processInfo.dwProcessId;
+            return CurrentHost;
+#else
+            return null;
 #endif
         }
 
@@ -565,12 +568,6 @@ namespace Microsoft.Build.BackEnd
         /// </summary>
         internal class NodeContext
         {
-            /// <summary>
-            /// Whether to trace communications.
-            /// Stored here as a field to avoid a function call when writing packets
-            /// </summary>
-            private static bool s_trace = String.Equals(Environment.GetEnvironmentVariable("MSBUILDDEBUGCOMM"), "1", StringComparison.Ordinal);
-
             // The pipe(s) used to communicate with the node.
             private Stream _clientToServerStream;
             private Stream _serverToClientStream;
@@ -619,23 +616,13 @@ namespace Microsoft.Build.BackEnd
             /// Constructor.
             /// </summary>
             public NodeContext(int nodeId, int processId,
-#if FEATURE_NAMED_PIPES_FULL_DUPLEX
                 Stream nodePipe,
-#else
-                AnonymousPipeServerStream clientToServerStream,
-                AnonymousPipeServerStream serverToClientStream,
-#endif
                 INodePacketFactory factory, NodeContextTerminateDelegate terminateDelegate)
             {
                 _nodeId = nodeId;
                 _processId = processId;
-#if FEATURE_NAMED_PIPES_FULL_DUPLEX
                 _clientToServerStream = nodePipe;
                 _serverToClientStream = nodePipe;
-#else
-                _clientToServerStream = clientToServerStream;
-                _serverToClientStream = serverToClientStream;
-#endif
                 _packetFactory = factory;
                 _headerByte = new byte[5]; // 1 for the packet type, 4 for the body length
                 _smallReadBuffer = new byte[1000]; // 1000 was just an average seen on one profile run.
@@ -732,7 +719,7 @@ namespace Microsoft.Build.BackEnd
             public void SendData(INodePacket packet)
             {
                 MemoryStream writeStream = new MemoryStream();
-                INodePacketTranslator writeTranslator = NodePacketTranslator.GetWriteTranslator(writeStream);
+                ITranslator writeTranslator = BinaryTranslator.GetWriteTranslator(writeStream);
                 try
                 {
                     writeStream.WriteByte((byte)packet.Type);
@@ -745,18 +732,7 @@ namespace Microsoft.Build.BackEnd
                     writeStream.Position = 1;
                     writeStream.Write(BitConverter.GetBytes((int)writeStream.Length - 5), 0, 4);
 
-#if FALSE
-                    if (trace) // Avoid method call
-                    {
-                        CommunicationsUtilities.Trace(nodeId, "Sending Packet of type {0} with length {1}", packet.Type.ToString(), writeStream.Length - 5);
-                    }
-#endif
-
-#if FEATURE_MEMORYSTREAM_GETBUFFER
                     byte[] writeStreamBuffer = writeStream.GetBuffer();
-#else
-                    byte[] writeStreamBuffer = writeStream.ToArray();
-#endif
 
                     for (int i = 0; i < writeStream.Length; i += MaxPacketWriteSize)
                     {
@@ -898,7 +874,6 @@ namespace Microsoft.Build.BackEnd
                     return;
                 }
 
-                NodePacketType packetType = (NodePacketType)_headerByte[0];
                 int packetLength = BitConverter.ToInt32(_headerByte, 1);
 
                 byte[] packetData;
@@ -936,7 +911,7 @@ namespace Microsoft.Build.BackEnd
                     // Since the buffer is publicly visible dispose right away to discourage outsiders from holding a reference to it.
                     using (var packetStream = new MemoryStream(packetData, 0, packetLength, /*writeable*/ false, /*bufferIsPubliclyVisible*/ true))
                     {
-                        INodePacketTranslator readTranslator = NodePacketTranslator.GetReadTranslator(packetStream, _sharedReadBuffer);
+                        ITranslator readTranslator = BinaryTranslator.GetReadTranslator(packetStream, _sharedReadBuffer);
                         _packetFactory.DeserializeAndRoutePacket(_nodeId, packetType, readTranslator);
                     }
                 }

@@ -1,9 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Class implementing INodeProvider for out-of-proc nodes.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
@@ -285,7 +281,7 @@ namespace Microsoft.Build.BackEnd
         /// <param name="nodeId">The node from which the packet was received.</param>
         /// <param name="packetType">The packet type.</param>
         /// <param name="translator">The translator containing the data from which the packet should be reconstructed.</param>
-        public void DeserializeAndRoutePacket(int nodeId, NodePacketType packetType, INodePacketTranslator translator)
+        public void DeserializeAndRoutePacket(int nodeId, NodePacketType packetType, ITranslator translator)
         {
             if (_nodeIdToPacketFactory.ContainsKey(nodeId))
             {
@@ -535,7 +531,8 @@ namespace Microsoft.Build.BackEnd
 
             // Start the new process.  We pass in a node mode with a node number of 2, to indicate that we 
             // want to start up an MSBuild task host node. 
-            string commandLineArgs = " /nologo /nodemode:2 ";
+            string commandLineArgs = $" /nologo /nodemode:2 /nodereuse:{ComponentHost.BuildParameters.EnableNodeReuse} ";
+
             string msbuildLocation = GetMSBuildLocationFromHostContext(hostContext);
 
             // we couldn't even figure out the location we're trying to launch ... just go ahead and fail.  

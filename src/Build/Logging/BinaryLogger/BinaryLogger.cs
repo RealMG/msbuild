@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.Compression;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
+using Microsoft.Build.Shared.FileSystem;
 
 namespace Microsoft.Build.Logging
 {
@@ -19,12 +20,25 @@ namespace Microsoft.Build.Logging
         // version 2: 
         //   - new BuildEventContext.EvaluationId
         //   - new record kinds: ProjectEvaluationStarted, ProjectEvaluationFinished
-        internal const int FileFormatVersion = 2;
+        // version 3:
+        //   - new ProjectImportedEventArgs.ImportIgnored
+        // version 4:
+        //   - new TargetSkippedEventArgs
+        //   - new TargetStartedEventArgs.BuildReason
+        // version 5:
+        //   - new EvaluationFinished.ProfilerResult
+        // version 6:
+        //   -  Ids and parent ids for the evaluation locations
+        // version 7:
+        //   -  Include ProjectStartedEventArgs.GlobalProperties
+        internal const int FileFormatVersion = 7;
 
         private Stream stream;
         private BinaryWriter binaryWriter;
         private BuildEventArgsWriter eventArgsWriter;
         private ProjectImportsCollector projectImportsCollector;
+        private string _initialTargetOutputLogging;
+        private string _initialLogImports;
 
         /// <summary>
         /// Describes whether to collect the project files (including imported project files) used during the build.
@@ -71,6 +85,9 @@ namespace Microsoft.Build.Logging
         /// </summary>
         public void Initialize(IEventSource eventSource)
         {
+            _initialTargetOutputLogging = Environment.GetEnvironmentVariable("MSBUILDTARGETOUTPUTLOGGING");
+            _initialLogImports = Environment.GetEnvironmentVariable("MSBUILDLOGIMPORTS");
+
             Environment.SetEnvironmentVariable("MSBUILDTARGETOUTPUTLOGGING", "true");
             Environment.SetEnvironmentVariable("MSBUILDLOGIMPORTS", "1");
 
@@ -78,18 +95,39 @@ namespace Microsoft.Build.Logging
 
             try
             {
+                string logDirectory = null;
+                try
+                {
+                    logDirectory = Path.GetDirectoryName(FilePath);
+                }
+                catch (Exception)
+                {
+                    // Directory creation is best-effort; if finding its path fails don't create the directory
+                    // and possibly let the FileStream constructor below report the failure
+                }
+
+                if (logDirectory != null)
+                {
+                    Directory.CreateDirectory(logDirectory);
+                }
+
                 stream = new FileStream(FilePath, FileMode.Create);
 
                 if (CollectProjectImports != ProjectImportsCollectionMode.None)
                 {
                     projectImportsCollector = new ProjectImportsCollector(FilePath);
                 }
+
+                if (eventSource is IEventSource3 eventSource3)
+                {
+                    eventSource3.IncludeEvaluationMetaprojects();
+                }
             }
             catch (Exception e)
             {
                 string errorCode;
                 string helpKeyword;
-                string message = ResourceUtilities.FormatResourceString(out errorCode, out helpKeyword, "InvalidFileLoggerFile", FilePath, e.Message);
+                string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword(out errorCode, out helpKeyword, "InvalidFileLoggerFile", FilePath, e.Message);
                 throw new LoggerException(message, e, errorCode, helpKeyword);
             }
 
@@ -107,6 +145,9 @@ namespace Microsoft.Build.Logging
         /// </summary>
         public void Shutdown()
         {
+            Environment.SetEnvironmentVariable("MSBUILDTARGETOUTPUTLOGGING", _initialTargetOutputLogging);
+            Environment.SetEnvironmentVariable("MSBUILDLOGIMPORTS", _initialLogImports);
+
             if (projectImportsCollector != null)
             {
                 projectImportsCollector.Close();
@@ -117,7 +158,7 @@ namespace Microsoft.Build.Logging
 
                     // It is possible that the archive couldn't be created for some reason.
                     // Only embed it if it actually exists.
-                    if (File.Exists(archiveFilePath))
+                    if (FileSystems.Default.FileExists(archiveFilePath))
                     {
                         eventArgsWriter.WriteBlob(BinaryLogRecordKind.ProjectImportArchive, File.ReadAllBytes(archiveFilePath));
                         File.Delete(archiveFilePath);
@@ -162,17 +203,17 @@ namespace Microsoft.Build.Logging
 
         private void CollectImports(BuildEventArgs e)
         {
-            ProjectImportedEventArgs importArgs = e as ProjectImportedEventArgs;
-            if (importArgs != null && importArgs.ImportedProjectFile != null)
+            if (e is ProjectImportedEventArgs importArgs && importArgs.ImportedProjectFile != null)
             {
                 projectImportsCollector.AddFile(importArgs.ImportedProjectFile);
-                return;
             }
-
-            ProjectStartedEventArgs projectArgs = e as ProjectStartedEventArgs;
-            if (projectArgs != null)
+            else if (e is ProjectStartedEventArgs projectArgs)
             {
                 projectImportsCollector.AddFile(projectArgs.ProjectFile);
+            }
+            else if (e is MetaprojectGeneratedEventArgs metaprojectArgs)
+            {
+                projectImportsCollector.AddFileFromMemory(metaprojectArgs.ProjectFile, metaprojectArgs.metaprojectXml);
             }
         }
 
@@ -185,10 +226,10 @@ namespace Microsoft.Build.Logging
         {
             if (Parameters == null)
             {
-                throw new LoggerException(ResourceUtilities.FormatResourceString("InvalidBinaryLoggerParameters", ""));
+                throw new LoggerException(ResourceUtilities.FormatResourceStringStripCodeAndKeyword("InvalidBinaryLoggerParameters", ""));
             }
 
-            var parameters = Parameters.Split(new char[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            var parameters = Parameters.Split(MSBuildConstants.SemicolonChar, StringSplitOptions.RemoveEmptyEntries);
             foreach (var parameter in parameters)
             {
                 if (string.Equals(parameter, "ProjectImports=None", StringComparison.OrdinalIgnoreCase))
@@ -211,11 +252,11 @@ namespace Microsoft.Build.Logging
                         FilePath = FilePath.Substring("LogFile=".Length);
                     }
 
-                    FilePath = parameter.TrimStart('"').TrimEnd('"');
+                    FilePath = FilePath.Trim('"');
                 }
                 else
                 {
-                    throw new LoggerException(ResourceUtilities.FormatResourceString("InvalidBinaryLoggerParameters", parameter));
+                    throw new LoggerException(ResourceUtilities.FormatResourceStringStripCodeAndKeyword("InvalidBinaryLoggerParameters", parameter));
                 }
             }
 
@@ -232,7 +273,7 @@ namespace Microsoft.Build.Logging
             {
                 string errorCode;
                 string helpKeyword;
-                string message = ResourceUtilities.FormatResourceString(out errorCode, out helpKeyword, "InvalidFileLoggerFile", FilePath, e.Message);
+                string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword(out errorCode, out helpKeyword, "InvalidFileLoggerFile", FilePath, e.Message);
                 throw new LoggerException(message, e, errorCode, helpKeyword);
             }
         }

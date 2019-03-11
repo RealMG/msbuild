@@ -4,17 +4,23 @@ using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
 using Microsoft.Build.Tasks;
 using Microsoft.Build.Utilities;
+using Shouldly;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAndUnification.AutoUnify
 {
     public sealed class StronglyNamedDependencyAutoUnify : ResolveAssemblyReferenceTestFixture
     {
+        public StronglyNamedDependencyAutoUnify(ITestOutputHelper output) : base(output)
+        {
+        }
+
         /// <summary>
         /// Return the default search paths.
         /// </summary>
         /// <value></value>
-            new internal string[] DefaultPaths
+        new internal string[] DefaultPaths
         {
                 get { return new string[] { s_myApp_V05Path, s_myApp_V10Path, s_myApp_V20Path, s_myApp_V30Path, s_myComponentsV05Path, s_myComponentsV10Path, s_myComponentsV20Path, s_myComponentsV30Path }; }
         }
@@ -34,8 +40,14 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAnd
         /// When AutoUnify is true, we need to resolve to the highest version of each particular assembly 
         /// dependency seen.
         /// </summary>
+        /// <param name="rarSimulationMode"></param>
         [Fact]
         public void Exists()
+        {
+            ExistsImpl();
+        }
+
+        internal void ExistsImpl(RARSimulationMode rarSimulationMode = RARSimulationMode.LoadAndBuildProject)
         {
             // This WriteLine is a hack.  On a slow machine, the Tasks unittest fails because remoting
             // times out the object used for remoting console writes.  Adding a write in the middle of
@@ -43,7 +55,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAnd
             Console.WriteLine("Performing VersioningAndUnification.AutoUnify.StronglyNamedDependency.Exists() test");
 
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             ITaskItem[] assemblyNames = new TaskItem[]
             {
@@ -59,21 +71,24 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAnd
             t.SearchPaths = DefaultPaths;
             t.AutoUnify = true;
 
-            bool succeeded = Execute(t);
+            bool succeeded = Execute(t, rarSimulationMode);
 
-            Assert.True(succeeded);
-            AssertNoCase("UnifyMe, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", t.ResolvedDependencyFiles[0].GetMetadata("FusionName"));
-                AssertNoCase(s_unifyMeDll_V20Path, t.ResolvedDependencyFiles[0].ItemSpec);
+            if (rarSimulationMode.HasFlag(RARSimulationMode.LoadAndBuildProject))
+            {
+                Assert.True(succeeded);
+                t.ResolvedDependencyFiles[0].GetMetadata("FusionName").ShouldBe("UnifyMe, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", StringCompareShould.IgnoreCase);
+                t.ResolvedDependencyFiles[0].ItemSpec.ShouldBe(s_unifyMeDll_V20Path, StringCompareShould.IgnoreCase);
 
-            engine.AssertLogContains
+                engine.AssertLogContains
                 (
                     String.Format(AssemblyResources.GetString("ResolveAssemblyReference.UnifiedDependency"), "UniFYme, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089")
                 );
 
-            engine.AssertLogContains
+                engine.AssertLogContains
                 (
                     String.Format(AssemblyResources.GetString("ResolveAssemblyReference.UnificationByAutoUnify"), "1.0.0.0", Path.Combine(s_myApp_V10Path, "DependsOnUnified.dll"))
                 );
+            }
         }
 
         /// <summary>
@@ -113,7 +128,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAnd
 
 
                 // Create the engine.
-                MockEngine engine = new MockEngine();
+                MockEngine engine = new MockEngine(_output);
 
                 ITaskItem[] assemblyNames = new TaskItem[]
                 {
@@ -134,11 +149,11 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAnd
                 bool succeeded = Execute(t);
 
                 Assert.True(succeeded);
-                Assert.Equal(1, t.ResolvedFiles.Length); // "Expected there to only be one resolved file"
-                    Assert.True(t.ResolvedFiles[0].ItemSpec.Contains(Path.Combine(s_myApp_V10Path, "DependsOnUnified.dll"))); // "Expected the ItemSpec of the resolved file to be the item spec of the 1.0.0.0 assembly");
-                Assert.Equal(1, t.ResolvedDependencyFiles.Length); // "Expected there to be two resolved dependencies"
-                AssertNoCase("UnifyMe, Version=1.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", t.ResolvedDependencyFiles[0].GetMetadata("FusionName"));
-                    AssertNoCase(s_unifyMeDll_V10Path, t.ResolvedDependencyFiles[0].ItemSpec);
+                Assert.Single(t.ResolvedFiles); // "Expected there to only be one resolved file"
+                Assert.Contains(Path.Combine(s_myApp_V10Path, "DependsOnUnified.dll"), t.ResolvedFiles[0].ItemSpec); // "Expected the ItemSpec of the resolved file to be the item spec of the 1.0.0.0 assembly");
+                Assert.Single(t.ResolvedDependencyFiles); // "Expected there to be two resolved dependencies"
+                t.ResolvedDependencyFiles[0].GetMetadata("FusionName").ShouldBe("UnifyMe, Version=1.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", StringCompareShould.IgnoreCase);
+                    t.ResolvedDependencyFiles[0].ItemSpec.ShouldBe(s_unifyMeDll_V10Path, StringCompareShould.IgnoreCase);
 
                 engine.AssertLogDoesntContain
                     (
@@ -197,7 +212,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAnd
 
 
                 // Create the engine.
-                MockEngine engine = new MockEngine();
+                MockEngine engine = new MockEngine(_output);
 
                 ITaskItem[] assemblyNames = new TaskItem[]
                 {
@@ -226,7 +241,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAnd
                 bool succeeded = Execute(t, false);
 
                 Assert.True(succeeded);
-                Assert.Equal(0, t.ResolvedDependencyFiles.Length);
+                Assert.Empty(t.ResolvedDependencyFiles);
                 engine.AssertLogDoesntContain
                     (
                         String.Format(AssemblyResources.GetString("ResolveAssemblyReference.UnificationByAppConfig"), "1.0.0.0", appConfigFile, Path.Combine(s_myApp_V10Path, "DependsOnUnified.dll"))
@@ -278,7 +293,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAnd
 
 
                 // Create the engine.
-                MockEngine engine = new MockEngine();
+                MockEngine engine = new MockEngine(_output);
 
                 ITaskItem[] assemblyNames = new TaskItem[]
                 {
@@ -299,7 +314,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAnd
                 bool succeeded = Execute(t, false);
 
                 Assert.True(succeeded);
-                Assert.Equal(0, t.ResolvedFiles.Length); // "Expected there to be no resolved files"
+                Assert.Empty(t.ResolvedFiles); // "Expected there to be no resolved files"
 
                     Assert.False(ContainsItem(t.ResolvedFiles, Path.Combine(s_myApp_V10Path, "DependsOnUnified.dll"))); // "Expected the ItemSpec of the resolved file to not be the item spec of the 1.0.0.0 assembly");
                     Assert.False(ContainsItem(t.ResolvedFiles, Path.Combine(s_myApp_V20Path, "DependsOnUnified.dll"))); // "Expected the ItemSpec of the resolved file to not be the item spec of the 2.0.0.0 assembly"
@@ -351,7 +366,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAnd
             File.WriteAllText(subsetListPath, engineOnlySubset);
 
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             ITaskItem[] assemblyNames = new TaskItem[]
             {
@@ -377,8 +392,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAnd
             Assert.Equal(2, t.ResolvedFiles.Length); // "Expected to find two resolved assemblies"
                 Assert.True(ContainsItem(t.ResolvedFiles, Path.Combine(s_myApp_V10Path, "DependsOnUnified.dll"))); // "Expected the ItemSpec of the resolved file to be the item spec of the 1.0.0.0 assembly");
                 Assert.True(ContainsItem(t.ResolvedFiles, Path.Combine(s_myApp_V20Path, "DependsOnUnified.dll"))); // "Expected the ItemSpec of the resolved file to be the item spec of the 2.0.0.0 assembly");
-            AssertNoCase("UnifyMe, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", t.ResolvedDependencyFiles[0].GetMetadata("FusionName"));
-                AssertNoCase(s_unifyMeDll_V20Path, t.ResolvedDependencyFiles[0].ItemSpec);
+            t.ResolvedDependencyFiles[0].GetMetadata("FusionName").ShouldBe("UnifyMe, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", StringCompareShould.IgnoreCase);
+                t.ResolvedDependencyFiles[0].ItemSpec.ShouldBe(s_unifyMeDll_V20Path, StringCompareShould.IgnoreCase);
 
             engine.AssertLogContains
                 (
@@ -416,7 +431,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAnd
         public void MultipleUnifiedFromNames()
         {
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             ITaskItem[] assemblyNames = new TaskItem[]
             {
@@ -437,8 +452,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAnd
             bool succeeded = Execute(t);
 
             Assert.True(succeeded);
-            AssertNoCase("UnifyMe, Version=3.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", t.ResolvedDependencyFiles[0].GetMetadata("FusionName"));
-                AssertNoCase(s_unifyMeDll_V30Path, t.ResolvedDependencyFiles[0].ItemSpec);
+            t.ResolvedDependencyFiles[0].GetMetadata("FusionName").ShouldBe("UnifyMe, Version=3.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", StringCompareShould.IgnoreCase);
+                t.ResolvedDependencyFiles[0].ItemSpec.ShouldBe(s_unifyMeDll_V30Path, StringCompareShould.IgnoreCase);
 
             engine.AssertLogContains
                 (
@@ -474,7 +489,7 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAnd
         public void LowVersionDoesntExist()
         {
             // Create the engine.
-            MockEngine engine = new MockEngine();
+            MockEngine engine = new MockEngine(_output);
 
             ITaskItem[] assemblyNames = new TaskItem[]
             {
@@ -494,8 +509,8 @@ namespace Microsoft.Build.UnitTests.ResolveAssemblyReference_Tests.VersioningAnd
             bool succeeded = Execute(t);
 
             Assert.True(succeeded);
-            Assert.Equal(1, t.ResolvedDependencyFiles.Length);
-            AssertNoCase("UnifyMe, Version=1.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", t.ResolvedDependencyFiles[0].GetMetadata("FusionName"));
+            Assert.Single(t.ResolvedDependencyFiles);
+            t.ResolvedDependencyFiles[0].GetMetadata("FusionName").ShouldBe("UnifyMe, Version=1.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089", StringCompareShould.IgnoreCase);
             engine.AssertLogContains
                 (
                     String.Format(AssemblyResources.GetString("ResolveAssemblyReference.UnificationByAutoUnify"), "0.5.0.0", Path.Combine(s_myApp_V05Path, "DependsOnUnified.dll"))

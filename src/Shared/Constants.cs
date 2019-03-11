@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
+using System.IO;
 using System.Reflection;
 
 // This file is compiled into both Microsoft.Build.Framework and Microsoft.Build.Tasks which can cause collisions.
@@ -46,6 +47,10 @@ namespace Microsoft.Build.Shared
         /// </summary>
         internal const string WarningsAsMessages = "MSBuildWarningsAsMessages";
 
+        /// <summary>
+        /// The name of the environment variable that users can specify to override where NuGet assemblies are loaded from in the NuGetSdkResolver.
+        /// </summary>
+        internal const string NuGetAssemblyPathEnvironmentVariableName = "MSBUILD_NUGET_PATH";
 
         /// <summary>
         /// The name of the target to run when a user specifies the /restore command-line argument.
@@ -54,53 +59,51 @@ namespace Microsoft.Build.Shared
         /// <summary>
         /// The most current Visual Studio Version known to this version of MSBuild.
         /// </summary>
-#if STANDALONEBUILD
-        internal const string CurrentVisualStudioVersion = "15.0";
-#else
-        internal const string CurrentVisualStudioVersion = Microsoft.VisualStudio.Internal.BrandNames.VSGeneralVersion;
-#endif
+        internal const string CurrentVisualStudioVersion = "16.0";
 
         /// <summary>
         /// The most current ToolsVersion known to this version of MSBuild.
         /// </summary>
-        internal const string CurrentToolsVersion = CurrentVisualStudioVersion;
+        internal const string CurrentToolsVersion = "Current";
 
         // if you change the key also change the following clones
         // Microsoft.Build.OpportunisticIntern.BucketedPrioritizedStringList.TryIntern
         internal const string MSBuildDummyGlobalPropertyHeader = "MSBuildProjectInstance";
 
         /// <summary>
-        /// The most current ToolsVersion known to this version of MSBuild as a Version object.
-        /// </summary>
-        internal static Version CurrentToolsVersionAsVersion = new Version(CurrentToolsVersion);
-
-        /// <summary>
         /// The most current VSGeneralAssemblyVersion known to this version of MSBuild.
         /// </summary>
-#if STANDALONEBUILD
         internal const string CurrentAssemblyVersion = "15.1.0.0";
-#else
-        internal const string CurrentAssemblyVersion = Microsoft.VisualStudio.Internal.BrandNames.VSGeneralAssemblyVersion;
-#endif
-
-        internal const string CurrentAssemblyFileVersion = "15.5.0.0";
 
         /// <summary>
         /// Current version of this MSBuild Engine assembly in the form, e.g, "12.0"
         /// </summary>
-        internal static string CurrentProductVersion
-        {
-            get
-            {
-#if STANDALONEBUILD
-                return "15.0";
-#else
-                Version thisAssemblyVersion = new Version(ThisAssembly.Version);
-                // "12.0.0.0" --> "12.0"
-                return thisAssemblyVersion.Major + "." + thisAssemblyVersion.Minor;
-#endif
-            }
-        }
+        internal const string CurrentProductVersion = "16.0";
+		
+		/// <summary>
+        /// The name of the item used to specify references to other msbuild projects
+        /// </summary>
+        internal const string ProjectReferenceItemName = "ProjectReference";
+
+        // One-time allocations to avoid implicit allocations for Split(), Trim().
+        internal static readonly char[] SemicolonChar = { ';' };
+        internal static readonly char[] SpaceChar = { ' ' };
+        internal static readonly char[] SingleQuoteChar = { '\'' };
+        internal static readonly char[] EqualsChar = { '=' };
+        internal static readonly char[] ColonChar = { ':' };
+        internal static readonly char[] BackslashChar = { '\\' };
+        internal static readonly char[] NewlineChar = { '\n' };
+        internal static readonly char[] CrLf = { '\r', '\n' };
+        internal static readonly char[] ForwardSlash = { '/' };
+        internal static readonly char[] ForwardSlashBackslash = { '/', '\\' };
+        internal static readonly char[] WildcardChars = { '*', '?' };
+        internal static readonly char[] CommaChar = { ',' };
+        internal static readonly char[] HyphenChar = { '-' };
+        internal static readonly char[] DirectorySeparatorChar = { Path.DirectorySeparatorChar };
+        internal static readonly char[] DotChar = { '.' };
+        internal static readonly string[] EnvironmentNewLine = { Environment.NewLine };
+        internal static readonly char[] PipeChar = { '|' };
+        internal static readonly char[] PathSeparatorChar = { Path.PathSeparator };
     }
 
     /// <summary>

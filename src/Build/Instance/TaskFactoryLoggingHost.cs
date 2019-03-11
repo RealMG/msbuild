@@ -1,9 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>The host allows task factories access to method to allow them to log message during the construction of the task factories.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using Microsoft.Build.Framework;
@@ -342,11 +338,7 @@ namespace Microsoft.Build.BackEnd
         /// </summary>
         internal bool IsEventSerializable(BuildEventArgs e)
         {
-#if FEATURE_BINARY_SERIALIZATION
             if (!e.GetType().GetTypeInfo().IsSerializable)
-#else
-            if (!NodePacketTranslator.IsSerializable(e))
-#endif
             {
                 _loggingContext.LogWarning(null, new BuildEventFileInfo(string.Empty), "ExpectedEventToBeSerializable", e.GetType().Name);
                 return false;

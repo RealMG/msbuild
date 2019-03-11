@@ -1,9 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Class implementing INodeProvider for out-of-proc nodes.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
@@ -140,7 +136,7 @@ namespace Microsoft.Build.BackEnd
                 return true;
             }
 
-            throw new BuildAbortedException(ResourceUtilities.FormatResourceString("CouldNotConnectToMSBuildExe", ComponentHost.BuildParameters.NodeExeLocation));
+            throw new BuildAbortedException(ResourceUtilities.FormatResourceStringStripCodeAndKeyword("CouldNotConnectToMSBuildExe", ComponentHost.BuildParameters.NodeExeLocation));
         }
 
         /// <summary>
@@ -177,7 +173,13 @@ namespace Microsoft.Build.BackEnd
         /// </summary>
         public void ShutdownAllNodes()
         {
-            ShutdownAllNodes(NodeProviderOutOfProc.GetHostHandshake(ComponentHost.BuildParameters.EnableNodeReuse), NodeProviderOutOfProc.GetClientHandshake(), NodeContextTerminated);
+            // if no BuildParameters were specified for this build,
+            // we must be trying to shut down idle nodes from some
+            // other, completed build. If they're still around,
+            // they must have been started with node reuse.
+            bool nodeReuse = ComponentHost.BuildParameters?.EnableNodeReuse ?? true;
+
+            ShutdownAllNodes(NodeProviderOutOfProc.GetHostHandshake(nodeReuse), NodeProviderOutOfProc.GetClientHandshake(), NodeContextTerminated);
         }
 
         #endregion

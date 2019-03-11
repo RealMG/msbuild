@@ -1,42 +1,30 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Class holding the parameters and settings which are global to the build.</summary>
-//-----------------------------------------------------------------------
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.Linq;
-using System.Reflection;
-using System.Text;
 using System.Threading;
 using System.Globalization;
-
 using Microsoft.Build.BackEnd;
 using Microsoft.Build.Collections;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Internal;
 using Microsoft.Build.Shared;
-
-using ReservedPropertyNames = Microsoft.Build.Internal.ReservedPropertyNames;
-using LoggerDescription = Microsoft.Build.Logging.LoggerDescription;
+using Microsoft.Build.Shared.FileSystem;
 using ForwardingLoggerRecord = Microsoft.Build.Logging.ForwardingLoggerRecord;
 
 namespace Microsoft.Build.Execution
 {
-    using System.Diagnostics;
-    using Utilities = Microsoft.Build.Internal.Utilities;
+    using Utilities = Internal.Utilities;
 
     /// <summary>
     /// This class represents all of the settings which must be specified to start a build.
     /// </summary>
-    public class BuildParameters : INodePacketTranslatable
+    public class BuildParameters : ITranslatable
     {
         /// <summary>
         /// The default thread stack size for threads owned by MSBuild.
@@ -76,32 +64,32 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// Indicates whether we should warn when a property is uninitialized when it is used.
         /// </summary>
-        private static bool? s_warnOnUninitializedProperty = null;
+        private static bool? s_warnOnUninitializedProperty;
 
         /// <summary>
         /// Indicates if we should dump string interning stats.
         /// </summary>
-        private static bool? s_dumpOpportunisticInternStats = null;
+        private static bool? s_dumpOpportunisticInternStats;
 
         /// <summary>
         /// Indicates if we should debug the expander.
         /// </summary>
-        private static bool? s_debugExpansion = null;
+        private static bool? s_debugExpansion;
 
         /// <summary>
         /// Indicates if we should keep duplicate target outputs.
         /// </summary>
-        private static bool? s_keepDuplicateOutputs = null;
+        private static bool? s_keepDuplicateOutputs;
 
         /// <summary>
         /// Indicates if we should enable the build plan
         /// </summary>
-        private static bool? s_enableBuildPlan = null;
+        private static bool? s_enableBuildPlan;
 
         /// <summary>
         /// The maximum number of idle request builders we will retain.
         /// </summary>
-        private static int? s_idleRequestBuilderLimit = null;
+        private static int? s_idleRequestBuilderLimit;
 
         /// <summary>
         /// Location that msbuild.exe was last successfully found at.
@@ -111,14 +99,7 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// The build id
         /// </summary>
-        private int _buildId = 0;
-
-#if FEATURE_THREAD_PRIORITY
-        /// <summary>
-        /// The thread priority with which to run the in-proc node.
-        /// </summary>
-        private ThreadPriority _buildThreadPriority = ThreadPriority.Normal;
-#endif
+        private int _buildId;
 
         /// <summary>
         /// The culture
@@ -129,11 +110,6 @@ namespace Microsoft.Build.Execution
         /// The default tools version.
         /// </summary>
         private string _defaultToolsVersion = "2.0";
-
-        /// <summary>
-        /// When true, causes the build to emit a summary of project build information
-        /// </summary>
-        private bool _detailedSummary = false;
 
         /// <summary>
         /// Flag indicating whether node reuse should be enabled.
@@ -158,7 +134,7 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// The forwarding logger records.
         /// </summary>
-        private IEnumerable<ForwardingLoggerRecord> _forwardingLoggers = null;
+        private IEnumerable<ForwardingLoggerRecord> _forwardingLoggers;
 
         /// <summary>
         /// The build-global properties.
@@ -166,14 +142,9 @@ namespace Microsoft.Build.Execution
         private PropertyDictionary<ProjectPropertyInstance> _globalProperties = new PropertyDictionary<ProjectPropertyInstance>();
 
         /// <summary>
-        /// The host services object.
-        /// </summary>
-        private HostServices _hostServices = null;
-
-        /// <summary>
         /// The loggers.
         /// </summary>
-        private IEnumerable<ILogger> _loggers = null;
+        private IEnumerable<ILogger> _loggers;
 
         /// <summary>
         /// The maximum number of nodes to use.
@@ -183,37 +154,17 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// The maximum amount of memory to use.
         /// </summary>
-        private int _memoryUseLimit = 0; // Unlimited
+        private int _memoryUseLimit; // Default 0 = unlimited
 
         /// <summary>
         /// The location of the node exe.  This is the full path including the exe file itself.
         /// </summary>
-        private string _nodeExeLocation = null;
-
-        /// <summary>
-        /// The node id.
-        /// </summary>
-        private int _nodeId = 0;
+        private string _nodeExeLocation;
 
         /// <summary>
         /// Flag indicating if we should only log critical events.
         /// </summary>
-        private bool _onlyLogCriticalEvents = false;
-
-        /// <summary>
-        /// A list of warnings to treat as errors.
-        /// </summary>
-        private ISet<string> _warningsAsErrors = null;
-
-        /// <summary>
-        /// A list of warnings to treat as low importance messages.
-        /// </summary>
-        private ISet<string> _warningsAsMessages = null;
-
-        /// <summary>
-        /// The location of the toolset definitions.
-        /// </summary>
-        private ToolsetDefinitionLocations _toolsetDefinitionLocations = ToolsetDefinitionLocations.Default;
+        private bool _onlyLogCriticalEvents;
 
         /// <summary>
         /// The UI culture.
@@ -226,36 +177,43 @@ namespace Microsoft.Build.Execution
         private ToolsetProvider _toolsetProvider;
 
         /// <summary>
-        /// Should the operating environment such as the current directory and environment be saved and restored between project builds and task invocations
-        /// This should be defaulted to true as we should normally do this. This should be set to false for GlobalDTAR which could run at the same time in a different build manager.
-        /// </summary>
-        private bool _saveOperatingEnvironment = true;
-
-        /// <summary>
         /// Should the logging service be done Synchronously when the number of cps's is 1
         /// </summary>
-        private bool _useSynchronousLogging = false;
+        private bool _useSynchronousLogging;
 
         /// <summary>
         /// Should the inprocess node be shutdown when the build finishes. By default this is false
         /// since visual studio needs to keep the inprocess node around after the build has finished.
         /// </summary>
-        private bool _shutdownInProcNodeOnBuildFinish = false;
+        private bool _shutdownInProcNodeOnBuildFinish;
 
         /// <summary>
         /// When true, the in-proc node will not be available.
         /// </summary>
-        private bool _disableInProcNode = false;
+        private bool _disableInProcNode;
 
         /// <summary>
         /// When true, the build should log task inputs to the loggers.
         /// </summary>
-        private bool _logTaskInputs = false;
+        private bool _logTaskInputs;
 
         /// <summary>
         /// When true, the build should log the input parameters.  Note - logging these is very expensive!
         /// </summary>
-        private bool _logInitialPropertiesAndItems = false;
+        private bool _logInitialPropertiesAndItems;
+
+        /// <summary>
+        /// The settings used to load the project under build
+        /// </summary>
+        private ProjectLoadSettings _projectLoadSettings = ProjectLoadSettings.Default;
+
+        private bool _interactive;
+
+        private bool _isolateProjects;
+
+        private string[] _inputResultsCacheFiles;
+
+        private string _outputResultsCacheFile;
 
         /// <summary>
         /// Constructor for those who intend to set all properties themselves.
@@ -271,13 +229,13 @@ namespace Microsoft.Build.Execution
         /// <param name="projectCollection">The ProjectCollection from which the BuildParameters should populate itself.</param>
         public BuildParameters(ProjectCollection projectCollection)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(projectCollection, "projectCollection");
+            ErrorUtilities.VerifyThrowArgumentNull(projectCollection, nameof(projectCollection));
 
             Initialize(new PropertyDictionary<ProjectPropertyInstance>(projectCollection.EnvironmentProperties), projectCollection.ProjectRootElementCache, new ToolsetProvider(projectCollection.Toolsets));
 
             _maxNodeCount = projectCollection.MaxNodeCount;
             _onlyLogCriticalEvents = projectCollection.OnlyLogCriticalEvents;
-            _toolsetDefinitionLocations = projectCollection.ToolsetLocations;
+            ToolsetDefinitionLocations = projectCollection.ToolsetLocations;
             _defaultToolsVersion = projectCollection.DefaultToolsVersion;
 
             _globalProperties = new PropertyDictionary<ProjectPropertyInstance>(projectCollection.GlobalPropertiesCollection);
@@ -286,9 +244,9 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// Private constructor for translation
         /// </summary>
-        private BuildParameters(INodePacketTranslator translator)
+        private BuildParameters(ITranslator translator)
         {
-            ((INodePacketTranslatable)this).Translate(translator);
+            ((ITranslatable)this).Translate(translator);
         }
 
         /// <summary>
@@ -296,7 +254,7 @@ namespace Microsoft.Build.Execution
         /// </summary>
         private BuildParameters(BuildParameters other)
         {
-            ErrorUtilities.VerifyThrowInternalNull(other, "other");
+            ErrorUtilities.VerifyThrowInternalNull(other, nameof(other));
 
             _buildId = other._buildId;
             _culture = other._culture;
@@ -306,43 +264,45 @@ namespace Microsoft.Build.Execution
             _environmentProperties = other._environmentProperties != null ? new PropertyDictionary<ProjectPropertyInstance>(other._environmentProperties) : null;
             _forwardingLoggers = other._forwardingLoggers != null ? new List<ForwardingLoggerRecord>(other._forwardingLoggers) : null;
             _globalProperties = other._globalProperties != null ? new PropertyDictionary<ProjectPropertyInstance>(other._globalProperties) : null;
-            _hostServices = other._hostServices;
+            HostServices = other.HostServices;
             _loggers = other._loggers != null ? new List<ILogger>(other._loggers) : null;
             _maxNodeCount = other._maxNodeCount;
             _memoryUseLimit = other._memoryUseLimit;
             _nodeExeLocation = other._nodeExeLocation;
-            _nodeId = other._nodeId;
+            NodeId = other.NodeId;
             _onlyLogCriticalEvents = other._onlyLogCriticalEvents;
 #if FEATURE_THREAD_PRIORITY
-            _buildThreadPriority = other._buildThreadPriority;
+            BuildThreadPriority = other.BuildThreadPriority;
 #endif
             _toolsetProvider = other._toolsetProvider;
-            _toolsetDefinitionLocations = other._toolsetDefinitionLocations;
+            ToolsetDefinitionLocations = other.ToolsetDefinitionLocations;
             _toolsetProvider = other._toolsetProvider;
             _uiCulture = other._uiCulture;
-            _detailedSummary = other._detailedSummary;
+            DetailedSummary = other.DetailedSummary;
             _shutdownInProcNodeOnBuildFinish = other._shutdownInProcNodeOnBuildFinish;
-            this.ProjectRootElementCache = other.ProjectRootElementCache;
-            this.ResetCaches = other.ResetCaches;
-            this.LegacyThreadingSemantics = other.LegacyThreadingSemantics;
-            _saveOperatingEnvironment = other._saveOperatingEnvironment;
+            ProjectRootElementCache = other.ProjectRootElementCache;
+            ResetCaches = other.ResetCaches;
+            LegacyThreadingSemantics = other.LegacyThreadingSemantics;
+            SaveOperatingEnvironment = other.SaveOperatingEnvironment;
             _useSynchronousLogging = other._useSynchronousLogging;
             _disableInProcNode = other._disableInProcNode;
             _logTaskInputs = other._logTaskInputs;
             _logInitialPropertiesAndItems = other._logInitialPropertiesAndItems;
-            _warningsAsErrors = other._warningsAsErrors == null ? null : new HashSet<string>(other._warningsAsErrors, StringComparer.OrdinalIgnoreCase);
-            _warningsAsMessages = other._warningsAsMessages == null ? null : new HashSet<string>(other._warningsAsMessages, StringComparer.OrdinalIgnoreCase);
+            WarningsAsErrors = other.WarningsAsErrors == null ? null : new HashSet<string>(other.WarningsAsErrors, StringComparer.OrdinalIgnoreCase);
+            WarningsAsMessages = other.WarningsAsMessages == null ? null : new HashSet<string>(other.WarningsAsMessages, StringComparer.OrdinalIgnoreCase);
+            _projectLoadSettings = other._projectLoadSettings;
+            _interactive = other._interactive;
+            _isolateProjects = other._isolateProjects;
+            _inputResultsCacheFiles = other._inputResultsCacheFiles;
+            _outputResultsCacheFile = other._outputResultsCacheFile;
         }
 
 #if FEATURE_THREAD_PRIORITY
         /// <summary>
-        /// Sets the desired thread priority for building.
+        /// Gets or sets the desired thread priority for building.
         /// </summary>
-        public ThreadPriority BuildThreadPriority
-        {
-            get { return _buildThreadPriority; }
-            set { _buildThreadPriority = value; }
-        }
+        public ThreadPriority BuildThreadPriority { get; set; } = ThreadPriority.Normal;
+
 #endif
 
         /// <summary>
@@ -351,33 +311,23 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public bool UseSynchronousLogging
         {
-            get { return _useSynchronousLogging; }
-            set { _useSynchronousLogging = value; }
+            get => _useSynchronousLogging;
+            set => _useSynchronousLogging = value;
         }
 
         /// <summary>
         /// Gets the environment variables which were set when this build was created.
         /// </summary>
-        public IDictionary<string, string> BuildProcessEnvironment
-        {
-            get
-            {
-                if (_buildProcessEnvironment == null)
-                {
-                    return new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(0));
-                }
-
-                return new ReadOnlyDictionary<string, string>(_buildProcessEnvironment);
-            }
-        }
+        public IDictionary<string, string> BuildProcessEnvironment => new ReadOnlyDictionary<string, string>(
+            _buildProcessEnvironment ?? new Dictionary<string, string>(0));
 
         /// <summary>
         /// The name of the culture to use during the build.
         /// </summary>
         public CultureInfo Culture
         {
-            get { return _culture; }
-            set { _culture = value; }
+            get => _culture;
+            set => _culture = value;
         }
 
         /// <summary>
@@ -385,26 +335,22 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public string DefaultToolsVersion
         {
-            get { return _defaultToolsVersion; }
-            set { _defaultToolsVersion = value; }
+            get => _defaultToolsVersion;
+            set => _defaultToolsVersion = value;
         }
 
         /// <summary>
         /// When true, indicates that the build should emit a detailed summary at the end of the log.
         /// </summary>
-        public bool DetailedSummary
-        {
-            get { return _detailedSummary; }
-            set { _detailedSummary = value; }
-        }
+        public bool DetailedSummary { get; set; }
 
         /// <summary>
         /// When true, indicates the in-proc node should not be used.
         /// </summary>
         public bool DisableInProcNode
         {
-            get { return _disableInProcNode; }
-            set { _disableInProcNode = value; }
+            get => _disableInProcNode;
+            set => _disableInProcNode = value;
         }
 
         /// <summary>
@@ -412,8 +358,8 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public bool LogTaskInputs
         {
-            get { return _logTaskInputs; }
-            set { _logTaskInputs = value; }
+            get => _logTaskInputs;
+            set => _logTaskInputs = value;
         }
 
         /// <summary>
@@ -421,8 +367,8 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public bool LogInitialPropertiesAndItems
         {
-            get { return _logInitialPropertiesAndItems; }
-            set { _logInitialPropertiesAndItems = value; }
+            get => _logInitialPropertiesAndItems;
+            set => _logInitialPropertiesAndItems = value;
         }
 
         /// <summary>
@@ -439,12 +385,8 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public bool EnableNodeReuse
         {
-            get { return _enableNodeReuse; }
-            set {
-#if FEATURE_NODE_REUSE
-                _enableNodeReuse = value;
-#endif
-                }
+            get => _enableNodeReuse;
+            set => _enableNodeReuse = value;
         }
 
         /// <summary>
@@ -458,7 +400,8 @@ namespace Microsoft.Build.Execution
         {
             get
             {
-                return new ReadOnlyConvertingDictionary<string, ProjectPropertyInstance, string>(_environmentProperties, delegate (ProjectPropertyInstance instance) { return ((IProperty)instance).EvaluatedValueEscaped; });
+                return new ReadOnlyConvertingDictionary<string, ProjectPropertyInstance, string>(_environmentProperties,
+                    instance => ((IProperty) instance).EvaluatedValueEscaped);
             }
         }
 
@@ -467,10 +410,7 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public IEnumerable<ForwardingLoggerRecord> ForwardingLoggers
         {
-            get
-            {
-                return _forwardingLoggers;
-            }
+            get => _forwardingLoggers;
 
             set
             {
@@ -478,7 +418,7 @@ namespace Microsoft.Build.Execution
                 {
                     foreach (ForwardingLoggerRecord logger in value)
                     {
-                        ErrorUtilities.VerifyThrowArgumentNull(logger, "ForwardingLoggers", "NullLoggerNotAllowed");
+                        ErrorUtilities.VerifyThrowArgumentNull(logger, nameof(ForwardingLoggers), "NullLoggerNotAllowed");
                     }
                 }
 
@@ -489,12 +429,14 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// Sets or retrieves an immutable collection of global properties.
         /// </summary>
-        [SuppressMessage("Microsoft.Usage", "CA2227:CollectionPropertiesShouldBeReadOnly", Justification = "Accessor returns a readonly collection, and the BuildParameters class is immutable.")]
+        [SuppressMessage("Microsoft.Usage", "CA2227:CollectionPropertiesShouldBeReadOnly", Justification =
+            "Accessor returns a readonly collection, and the BuildParameters class is immutable.")]
         public IDictionary<string, string> GlobalProperties
         {
             get
             {
-                return new ReadOnlyConvertingDictionary<string, ProjectPropertyInstance, string>(_globalProperties, delegate (ProjectPropertyInstance instance) { return ((IProperty)instance).EvaluatedValueEscaped; });
+                return new ReadOnlyConvertingDictionary<string, ProjectPropertyInstance, string>(_globalProperties,
+                    instance => ((IProperty) instance).EvaluatedValueEscaped);
             }
 
             set
@@ -510,11 +452,7 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// Interface allowing the host to provide additional control over the build process.
         /// </summary>
-        public HostServices HostServices
-        {
-            get { return _hostServices; }
-            set { _hostServices = value; }
-        }
+        public HostServices HostServices { get; set; }
 
         /// <summary>
         /// Enables or disables legacy threading semantics
@@ -525,21 +463,14 @@ namespace Microsoft.Build.Execution
         /// requests will be built on the thread which invoked the build rather than a 
         /// thread owned by the BuildManager.
         /// </remarks>
-        public bool LegacyThreadingSemantics
-        {
-            get;
-            set;
-        }
+        public bool LegacyThreadingSemantics { get; set; }
 
         /// <summary>
         /// The collection of loggers to use during the build.
         /// </summary>
         public IEnumerable<ILogger> Loggers
         {
-            get
-            {
-                return _loggers;
-            }
+            get => _loggers;
 
             set
             {
@@ -560,10 +491,7 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public int MaxNodeCount
         {
-            get
-            {
-                return _maxNodeCount;
-            }
+            get => _maxNodeCount;
 
             set
             {
@@ -577,8 +505,8 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public int MemoryUseLimit
         {
-            get { return _memoryUseLimit; }
-            set { _memoryUseLimit = value; }
+            get => _memoryUseLimit;
+            set => _memoryUseLimit = value;
         }
 
         /// <summary>
@@ -586,8 +514,8 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public string NodeExeLocation
         {
-            get { return _nodeExeLocation; }
-            set { _nodeExeLocation = value; }
+            get => _nodeExeLocation;
+            set => _nodeExeLocation = value;
         }
 
         /// <summary>
@@ -595,36 +523,24 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public bool OnlyLogCriticalEvents
         {
-            get { return _onlyLogCriticalEvents; }
-            set { _onlyLogCriticalEvents = value; }
+            get => _onlyLogCriticalEvents;
+            set => _onlyLogCriticalEvents = value;
         }
 
         /// <summary>
         /// A list of warnings to treat as errors.  To treat all warnings as errors, set this to an empty <see cref="HashSet{String}"/>.  
         /// </summary>
-        public ISet<string> WarningsAsErrors
-        {
-            get { return _warningsAsErrors; }
-            set { _warningsAsErrors = value; }
-        }
+        public ISet<string> WarningsAsErrors { get; set; }
 
         /// <summary>
         /// A list of warnings to treat as low importance messages.
         /// </summary>
-        public ISet<string> WarningsAsMessages
-        {
-            get { return _warningsAsMessages; }
-            set { _warningsAsMessages = value; }
-        }
+        public ISet<string> WarningsAsMessages { get; set; }
 
         /// <summary>
         /// Locations to search for toolsets.
         /// </summary>
-        public ToolsetDefinitionLocations ToolsetDefinitionLocations
-        {
-            get { return _toolsetDefinitionLocations; }
-            set { _toolsetDefinitionLocations = value; }
-        }
+        public ToolsetDefinitionLocations ToolsetDefinitionLocations { get; set; } = ToolsetDefinitionLocations.Default;
 
         /// <summary>
         /// Returns all of the toolsets.
@@ -632,29 +548,22 @@ namespace Microsoft.Build.Execution
         /// <comments>
         /// toolsetProvider.Toolsets is already a readonly collection. 
         /// </comments>
-        public ICollection<Toolset> Toolsets
-        {
-            get { return _toolsetProvider.Toolsets; }
-        }
+        public ICollection<Toolset> Toolsets => _toolsetProvider.Toolsets;
 
         /// <summary>
         /// The name of the UI culture to use during the build.
         /// </summary>
         public CultureInfo UICulture
         {
-            get { return _uiCulture; }
-            set { _uiCulture = value; }
+            get => _uiCulture;
+            set => _uiCulture = value;
         }
 
         /// <summary>
         /// Flag indicating if the operating environment such as the current directory and environment be saved and restored between project builds and task invocations.
         /// This should be set to false for any other build managers running in the system so that we do not have two build managers trampling on each others environment.
         /// </summary>
-        public bool SaveOperatingEnvironment
-        {
-            get { return _saveOperatingEnvironment; }
-            set { _saveOperatingEnvironment = value; }
-        }
+        public bool SaveOperatingEnvironment { get; set; } = true;
 
         /// <summary>
         /// Shutdown the inprocess node when the build finishes. By default this is false 
@@ -662,133 +571,93 @@ namespace Microsoft.Build.Execution
         /// </summary>
         public bool ShutdownInProcNodeOnBuildFinish
         {
-            get { return _shutdownInProcNodeOnBuildFinish; }
-            set { _shutdownInProcNodeOnBuildFinish = value; }
+            get => _shutdownInProcNodeOnBuildFinish;
+            set => _shutdownInProcNodeOnBuildFinish = value;
         }
 
         /// <summary>
         /// Gets the internal msbuild thread stack size.
         /// </summary>
-        static internal int ThreadStackSize
-        {
-            get { return CommunicationsUtilities.GetIntegerVariableOrDefault("MSBUILDTHREADSTACKSIZE", DefaultThreadStackSize); }
-        }
+        internal static int ThreadStackSize => CommunicationsUtilities.GetIntegerVariableOrDefault(
+            "MSBUILDTHREADSTACKSIZE", DefaultThreadStackSize);
 
         /// <summary>
-        /// Gets or sets the endpoint shutdown timeout.
+        /// Gets the endpoint shutdown timeout.
         /// </summary>
-        static internal int EndpointShutdownTimeout
-        {
-            get { return CommunicationsUtilities.GetIntegerVariableOrDefault("MSBUILDENDPOINTSHUTDOWNTIMEOUT", DefaultEndpointShutdownTimeout); }
-        }
+        internal static int EndpointShutdownTimeout => CommunicationsUtilities.GetIntegerVariableOrDefault(
+            "MSBUILDENDPOINTSHUTDOWNTIMEOUT", DefaultEndpointShutdownTimeout);
 
         /// <summary>
         /// Gets or sets the engine shutdown timeout.
         /// </summary>
-        static internal int EngineShutdownTimeout
-        {
-            get { return CommunicationsUtilities.GetIntegerVariableOrDefault("MSBUILDENGINESHUTDOWNTIMEOUT", DefaultEngineShutdownTimeout); }
-        }
+        internal static int EngineShutdownTimeout => CommunicationsUtilities.GetIntegerVariableOrDefault(
+            "MSBUILDENGINESHUTDOWNTIMEOUT", DefaultEngineShutdownTimeout);
 
         /// <summary>
         /// Gets the maximum number of idle request builders to retain.
         /// </summary>
-        static internal int IdleRequestBuilderLimit
-        {
-            get { return GetStaticIntVariableOrDefault("MSBUILDIDLEREQUESTBUILDERLIMIT", ref s_idleRequestBuilderLimit, DefaultIdleRequestBuilderLimit); }
-        }
+        internal static int IdleRequestBuilderLimit => GetStaticIntVariableOrDefault("MSBUILDIDLEREQUESTBUILDERLIMIT",
+            ref s_idleRequestBuilderLimit, DefaultIdleRequestBuilderLimit);
 
         /// <summary>
         /// Gets the logging thread shutdown timeout.
         /// </summary>
-        static internal int LoggingThreadShutdownTimeout
-        {
-            get { return CommunicationsUtilities.GetIntegerVariableOrDefault("MSBUILDLOGGINGTHREADSHUTDOWNTIMEOUT", DefaultLoggingThreadShutdownTimeout); }
-        }
+        internal static int LoggingThreadShutdownTimeout => CommunicationsUtilities.GetIntegerVariableOrDefault(
+            "MSBUILDLOGGINGTHREADSHUTDOWNTIMEOUT", DefaultLoggingThreadShutdownTimeout);
 
         /// <summary>
-        /// Gets or sets the request builder shutdown timeout.
+        /// Gets the request builder shutdown timeout.
         /// </summary>
-        static internal int RequestBuilderShutdownTimeout
-        {
-            get { return CommunicationsUtilities.GetIntegerVariableOrDefault("MSBUILDREQUESTBUILDERSHUTDOWNTIMEOUT", DefaultRequestBuilderShutdownTimeout); }
-        }
+        internal static int RequestBuilderShutdownTimeout => CommunicationsUtilities.GetIntegerVariableOrDefault(
+            "MSBUILDREQUESTBUILDERSHUTDOWNTIMEOUT", DefaultRequestBuilderShutdownTimeout);
 
         /// <summary>
-        /// Gets or sets the startup directory.
+        /// Gets the startup directory.
         /// </summary>
-        internal static string StartupDirectory
-        {
-            get { return BuildParameters.s_startupDirectory; }
-        }
+        internal static string StartupDirectory => s_startupDirectory;
 
         /// <summary>
         /// Indicates whether the build plan is enabled or not.
         /// </summary>
-        internal static bool EnableBuildPlan
-        {
-            get
-            {
-                return GetStaticBoolVariableOrDefault("MSBUILDENABLEBUILDPLAN", ref s_enableBuildPlan, false);
-            }
-        }
+        internal static bool EnableBuildPlan => GetStaticBoolVariableOrDefault("MSBUILDENABLEBUILDPLAN",
+            ref s_enableBuildPlan, false);
 
         /// <summary>
         /// Indicates whether we should warn when a property is uninitialized when it is used.
         /// </summary>
         internal static bool WarnOnUninitializedProperty
         {
-            get
-            {
-                return GetStaticBoolVariableOrDefault("MSBUILDWARNONUNINITIALIZEDPROPERTY", ref s_warnOnUninitializedProperty, false);
-            }
+            get => GetStaticBoolVariableOrDefault("MSBUILDWARNONUNINITIALIZEDPROPERTY",
+                ref s_warnOnUninitializedProperty, false);
 
-            set
-            {
-                s_warnOnUninitializedProperty = value;
-            }
+            set => s_warnOnUninitializedProperty = value;
         }
 
         /// <summary>
         /// Indicates whether we should dump string interning stats
         /// </summary>
-        internal static bool DumpOpportunisticInternStats
-        {
-            get
-            {
-                return GetStaticBoolVariableOrDefault("MSBUILDDUMPOPPORTUNISTICINTERNSTATS", ref s_dumpOpportunisticInternStats, false);
-            }
-        }
+        internal static bool DumpOpportunisticInternStats => GetStaticBoolVariableOrDefault(
+            "MSBUILDDUMPOPPORTUNISTICINTERNSTATS", ref s_dumpOpportunisticInternStats, false);
 
         /// <summary>
         /// Indicates whether we should dump debugging information about the expander
         /// </summary>
-        internal static bool DebugExpansion
-        {
-            get
-            {
-                return GetStaticBoolVariableOrDefault("MSBUILDDEBUGEXPANSION", ref s_debugExpansion, false);
-            }
-        }
+        internal static bool DebugExpansion => GetStaticBoolVariableOrDefault("MSBUILDDEBUGEXPANSION",
+            ref s_debugExpansion, false);
 
         /// <summary>
         /// Indicates whether we should keep duplicate target outputs
         /// </summary>
-        internal static bool KeepDuplicateOutputs
-        {
-            get
-            {
-                return GetStaticBoolVariableOrDefault("MSBUILDKEEPDUPLICATEOUTPUTS", ref s_keepDuplicateOutputs, false);
-            }
-        }
+        internal static bool KeepDuplicateOutputs => GetStaticBoolVariableOrDefault("MSBUILDKEEPDUPLICATEOUTPUTS",
+            ref s_keepDuplicateOutputs, false);
 
         /// <summary>
         /// Gets or sets the build id.
         /// </summary>
         internal int BuildId
         {
-            get { return _buildId; }
-            set { _buildId = value; }
+            get => _buildId;
+            set => _buildId = value;
         }
 
         /// <summary>
@@ -801,10 +670,7 @@ namespace Microsoft.Build.Execution
         /// </remarks>
         internal PropertyDictionary<ProjectPropertyInstance> EnvironmentPropertiesInternal
         {
-            get
-            {
-                return _environmentProperties;
-            }
+            get => _environmentProperties;
 
             set
             {
@@ -816,19 +682,12 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// Gets the global properties.
         /// </summary>
-        internal PropertyDictionary<ProjectPropertyInstance> GlobalPropertiesInternal
-        {
-            get { return _globalProperties; }
-        }
+        internal PropertyDictionary<ProjectPropertyInstance> GlobalPropertiesInternal => _globalProperties;
 
         /// <summary>
         /// Gets or sets the node id.
         /// </summary>
-        internal int NodeId
-        {
-            get { return _nodeId; }
-            set { _nodeId = value; }
-        }
+        internal int NodeId { get; set; }
 
         /// <summary>
         /// Gets the toolset provider.
@@ -845,30 +704,63 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// The one and only project root element cache to be used for the build.
         /// </summary>
-        internal ProjectRootElementCache ProjectRootElementCache
-        {
-            get;
-            set;
-        }
+        internal ProjectRootElementCache ProjectRootElementCache { get; set; }
 
 #if FEATURE_APPDOMAIN
         /// <summary>
         /// Information for configuring child AppDomains.
         /// </summary>
-        internal AppDomainSetup AppDomainSetup
-        {
-            get;
-            set;
-        }
+        internal AppDomainSetup AppDomainSetup { get; set; }
 #endif
 
         /// <summary>
         ///  (for diagnostic use) Whether or not this is out of proc
         /// </summary>
-        internal bool IsOutOfProc
+        internal bool IsOutOfProc { get; set; }
+
+        /// <nodoc/>
+        public ProjectLoadSettings ProjectLoadSettings
         {
-            get;
-            set;
+            get => _projectLoadSettings;
+            set => _projectLoadSettings = value;
+        }
+
+        /// <summary>
+        /// Gets or sets a value indicating if the build is allowed to interact with the user.
+        /// </summary>
+        public bool Interactive
+        {
+            get => _interactive;
+            set => _interactive = value;
+        }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether projects should build in isolation.
+        /// </summary>
+        public bool IsolateProjects
+        {
+            get => _isolateProjects;
+            set => _isolateProjects = value;
+        }
+
+        /// <summary>
+        /// Input cache files that MSBuild will use to read build results from.
+        /// Setting this also turns on isolated builds.
+        /// </summary>
+        public string[] InputResultsCacheFiles
+        {
+            get => _inputResultsCacheFiles;
+            set => _inputResultsCacheFiles = value;
+        }
+
+        /// <summary>
+        /// Output cache file where MSBuild will write the contents of its build result caches during EndBuild.
+        /// Setting this also turns on isolated builds.
+        /// </summary>
+        public string OutputResultsCacheFile
+        {
+            get => _outputResultsCacheFile;
+            set => _outputResultsCacheFile = value;
         }
 
         /// <summary>
@@ -889,10 +781,16 @@ namespace Microsoft.Build.Execution
             return new BuildParameters(this);
         }
 
+        internal bool UsesCachedResults() => UsesInputCaches() || UsesOutputCache();
+
+        internal bool UsesOutputCache() => OutputResultsCacheFile != null;
+
+        internal bool UsesInputCaches() => InputResultsCacheFiles != null;
+
         /// <summary>
         /// Implementation of the serialization mechanism.
         /// </summary>
-        void INodePacketTranslatable.Translate(INodePacketTranslator translator)
+        void ITranslatable.Translate(ITranslator translator)
         {
             translator.Translate(ref _buildId);
             /* No build thread priority during translation.  We specifically use the default (which is ThreadPriority.Normal) */
@@ -913,15 +811,19 @@ namespace Microsoft.Build.Execution
             translator.Translate(ref _onlyLogCriticalEvents);
             translator.Translate(ref s_startupDirectory);
             translator.TranslateCulture(ref _uiCulture);
-            translator.Translate(ref _toolsetProvider, Microsoft.Build.Evaluation.ToolsetProvider.FactoryForDeserialization);
+            translator.Translate(ref _toolsetProvider, Evaluation.ToolsetProvider.FactoryForDeserialization);
             translator.Translate(ref _useSynchronousLogging);
             translator.Translate(ref _shutdownInProcNodeOnBuildFinish);
             translator.Translate(ref _logTaskInputs);
             translator.Translate(ref _logInitialPropertiesAndItems);
+            translator.TranslateEnum(ref _projectLoadSettings, (int) _projectLoadSettings);
+            translator.Translate(ref _interactive);
+            translator.Translate(ref _isolateProjects);
 
             // ProjectRootElementCache is not transmitted.
             // ResetCaches is not transmitted.
             // LegacyThreadingSemantics is not transmitted.
+            // InputResultsCacheFiles and OutputResultsCacheFile are not transmitted, as they are only used by the BuildManager
         }
 
 #region INodePacketTranslatable Members
@@ -929,7 +831,7 @@ namespace Microsoft.Build.Execution
         /// <summary>
         /// The class factory for deserialization.
         /// </summary>
-        internal static BuildParameters FactoryForDeserialization(INodePacketTranslator translator)
+        internal static BuildParameters FactoryForDeserialization(ITranslator translator)
         {
             return new BuildParameters(translator);
         }
@@ -943,14 +845,7 @@ namespace Microsoft.Build.Execution
         {
             if (!backing.HasValue)
             {
-                if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable(environmentVariable)))
-                {
-                    backing = @default;
-                }
-                else
-                {
-                    backing = true;
-                }
+                backing = !String.IsNullOrEmpty(Environment.GetEnvironmentVariable(environmentVariable)) || @default;
             }
 
             return backing.Value;
@@ -970,15 +865,7 @@ namespace Microsoft.Build.Execution
                 }
                 else
                 {
-                    int parsedValue = defaultValue;
-                    if (!Int32.TryParse(environmentValue, out parsedValue))
-                    {
-                        backingValue = defaultValue;
-                    }
-                    else
-                    {
-                        backingValue = parsedValue;
-                    }
+                    backingValue = Int32.TryParse(environmentValue, out var parsedValue) ? parsedValue : defaultValue;
                 }
             }
 
@@ -992,8 +879,8 @@ namespace Microsoft.Build.Execution
         {
             _buildProcessEnvironment = CommunicationsUtilities.GetEnvironmentVariables();
             _environmentProperties = environmentProperties;
-            this.ProjectRootElementCache = projectRootElementCache;
-            this.ResetCaches = true;
+            ProjectRootElementCache = projectRootElementCache;
+            ResetCaches = true;
             _toolsetProvider = toolsetProvider;
 
             if (Environment.GetEnvironmentVariable("MSBUILDDISABLENODEREUSE") == "1") // For example to disable node reuse within Visual Studio
@@ -1003,7 +890,7 @@ namespace Microsoft.Build.Execution
 
             if (Environment.GetEnvironmentVariable("MSBUILDDETAILEDSUMMARY") == "1") // For example to get detailed summary within Visual Studio
             {
-                _detailedSummary = true;
+                DetailedSummary = true;
             }
 
             _nodeExeLocation = FindMSBuildExe();
@@ -1045,7 +932,7 @@ namespace Microsoft.Build.Execution
         /// This File.Exists otherwise can show up in profiles when there's a lot of 
         /// design time builds going on.
         /// </summary>
-        private bool CheckMSBuildExeExistsAt(string path)
+        private static bool CheckMSBuildExeExistsAt(string path)
         {
             if (s_msbuildExeKnownToExistAt != null && string.Equals(path, s_msbuildExeKnownToExistAt, StringComparison.OrdinalIgnoreCase))
             {
@@ -1053,7 +940,7 @@ namespace Microsoft.Build.Execution
                 return true;
             }
 
-            if (File.Exists(path))
+            if (FileSystems.Default.FileExists(path))
             {
                 s_msbuildExeKnownToExistAt = path;
                 return true;

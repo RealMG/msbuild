@@ -12,6 +12,7 @@ using Microsoft.Build.Utilities;
 using System.Text.RegularExpressions;
 
 using Microsoft.Build.Shared;
+using Shouldly;
 using Xunit;
 
 namespace Microsoft.Build.UnitTests
@@ -184,7 +185,7 @@ namespace Microsoft.Build.UnitTests
                 ");
 
             MockLogger logger = ObjectModelHelpers.BuildTempProjectFileExpectFailure(@"SkipNonexistentProjectsMain.csproj");
-            Assert.True(logger.FullLog.Contains("MSB3202")); // project file not found
+            Assert.Contains("MSB3202", logger.FullLog); // project file not found
         }
 
         /// <summary>
@@ -206,7 +207,7 @@ namespace Microsoft.Build.UnitTests
             MockLogger logger = ObjectModelHelpers.BuildTempProjectFileExpectFailure(@"SkipNonexistentProjectsMain.csproj");
             Assert.Equal(0, logger.WarningCount);
             Assert.Equal(1, logger.ErrorCount);
-            Assert.True(logger.FullLog.Contains("MSB3202")); // project file not found
+            Assert.Contains("MSB3202", logger.FullLog); // project file not found
         }
 
         /// <summary>
@@ -239,8 +240,8 @@ namespace Microsoft.Build.UnitTests
             logger.AssertLogContains("Hello from foo.csproj");
             Assert.Equal(0, logger.WarningCount);
             Assert.Equal(0, logger.ErrorCount);
-            Assert.True(logger.FullLog.Contains("this_project_does_not_exist.csproj")); // for the missing project
-            Assert.False(logger.FullLog.Contains("MSB3202")); // project file not found error
+            Assert.Contains("this_project_does_not_exist.csproj", logger.FullLog); // for the missing project
+            Assert.DoesNotContain("MSB3202", logger.FullLog); // project file not found error
         }
 
         /// <summary>
@@ -274,8 +275,8 @@ namespace Microsoft.Build.UnitTests
             logger.AssertLogContains("Hello from foo.csproj");
             Assert.Equal(0, logger.WarningCount);
             Assert.Equal(0, logger.ErrorCount);
-            Assert.True(logger.FullLog.Contains("this_project_does_not_exist.csproj")); // for the missing project
-            Assert.False(logger.FullLog.Contains("MSB3202")); // project file not found error
+            Assert.Contains("this_project_does_not_exist.csproj", logger.FullLog); // for the missing project
+            Assert.DoesNotContain("MSB3202", logger.FullLog); // project file not found error
         }
 
         [Fact]
@@ -315,7 +316,7 @@ namespace Microsoft.Build.UnitTests
             logger.AssertLogContains("Hello from foo.csproj");
             Assert.Equal(0, logger.WarningCount);
             Assert.Equal(1, logger.ErrorCount);
-            Assert.True(logger.FullLog.Contains("MSB3204")); // upgrade to vcxproj needed
+            Assert.Contains("MSB3204", logger.FullLog); // upgrade to vcxproj needed
         }
 
         /// <summary>
@@ -1340,6 +1341,57 @@ namespace Microsoft.Build.UnitTests
                 File.Delete(projectFile1);
                 File.Delete(projectFile2);
             }
+        }
+
+        [Fact]
+        public void NonexistentTargetSkippedWhenSkipNonexistentTargetsSet()
+        {
+            ObjectModelHelpers.DeleteTempProjectDirectory();
+            ObjectModelHelpers.CreateFileInTempProjectDirectory(
+                "SkipNonexistentTargets.csproj",
+                @"<Project>
+                    <Target Name=`t` >
+	                    <MSBuild Projects=`SkipNonexistentTargets.csproj` Targets=`t_nonexistent;t2` SkipNonexistentTargets=`true` />
+                     </Target>
+                    <Target Name=`t2`> <Message Text=`t2 executing` /> </Target>
+                </Project>
+                ");
+
+            MockLogger logger = ObjectModelHelpers.BuildTempProjectFileExpectSuccess(@"SkipNonexistentTargets.csproj");
+
+            // Target t2 should still execute
+            logger.FullLog.ShouldContain("t2 executing");
+            logger.WarningCount.ShouldBe(0);
+            logger.ErrorCount.ShouldBe(0);
+
+            // t_missing target should be skipped
+            logger.FullLog.ShouldContain("Target \"t_nonexistent\" skipped");
+        }
+
+        [Fact]
+        public void NonexistentTargetFailsAfterSkipped()
+        {
+            ObjectModelHelpers.DeleteTempProjectDirectory();
+            ObjectModelHelpers.CreateFileInTempProjectDirectory(
+                "SkipNonexistentTargets.csproj",
+                @"<Project>
+                    <Target Name=`t` >
+	                    <MSBuild Projects=`SkipNonexistentTargets.csproj` Targets=`t_nonexistent` SkipNonexistentTargets=`true` />
+                        <MSBuild Projects=`SkipNonexistentTargets.csproj` Targets=`t_nonexistent` SkipNonexistentTargets=`false` />
+                     </Target>
+                </Project>
+                ");
+
+            MockLogger logger = ObjectModelHelpers.BuildTempProjectFileExpectFailure(@"SkipNonexistentTargets.csproj");
+
+            logger.WarningCount.ShouldBe(0);
+            logger.ErrorCount.ShouldBe(1);
+
+            // t_missing target should be skipped
+            logger.FullLog.ShouldContain("Target \"t_nonexistent\" skipped");
+
+            // 2nd invocation of t_missing should fail the build resulting in target not found error (MSB4057)
+            logger.FullLog.ShouldContain("MSB4057");
         }
     }
 }

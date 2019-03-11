@@ -1,15 +1,13 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>A mock host used for unit testing</summary>
-//-----------------------------------------------------------------------
 
 using Microsoft.Build.BackEnd;
 using Microsoft.Build.BackEnd.Logging;
 using Microsoft.Build.UnitTests.BackEnd;
 using System;
 using System.Threading;
+using Microsoft.Build.BackEnd.SdkResolution;
+using Microsoft.Build.Engine.UnitTests.BackEnd;
 using Microsoft.Build.Evaluation;
 using Microsoft.Build.Execution;
 using LegacyThreadingData = Microsoft.Build.Execution.LegacyThreadingData;
@@ -61,6 +59,8 @@ namespace Microsoft.Build.UnitTests.BackEnd
         /// </summary>
         private LegacyThreadingData _legacyThreadingData;
 
+        private ISdkResolverService _sdkResolverService;
+
         #region SystemParameterFields
 
         #endregion;
@@ -101,6 +101,9 @@ namespace Microsoft.Build.UnitTests.BackEnd
 
             _targetBuilder = new TestTargetBuilder();
             ((IBuildComponent)_targetBuilder).InitializeComponent(this);
+
+            _sdkResolverService = new MockSdkResolverService();
+            ((IBuildComponent)_sdkResolverService).InitializeComponent(this);
         }
 
         /// <summary>
@@ -179,6 +182,9 @@ namespace Microsoft.Build.UnitTests.BackEnd
 
                 case BuildComponentType.RequestBuilder:
                     return (IBuildComponent)_requestBuilder;
+
+                case BuildComponentType.SdkResolverService:
+                    return (IBuildComponent)_sdkResolverService;
 
                 default:
                     throw new ArgumentException("Unexpected type " + type);

@@ -146,6 +146,12 @@
     %(RootDir) to an item-spec that's not a valid path, would result in this error.
     LOCALIZATION: "{1}" is a localized message explaining the problem.</comment>
   </data>
+  <data name="CannotExpandItemMetadata" UESanitized="false" Visibility="Public">
+    <value>MSB4248: Cannot expand metadata in expression "{0}". {1}</value>
+    <comment>{StrBegin="MSB4023: "}UE: This message is shown when metadata cannot be expanded in an expression for some reason e.g. trying to apply
+    %(RootDir) to an item-spec that's not a valid path would result in this error.
+    LOCALIZATION: "{1}" is a localized message explaining the problem.</comment>
+  </data>
   <data name="CouldNotFindMSBuildExe">
     <value>MSB4193: MSBuild.exe could not be launched as a child node as it could not be found at the location "{0}". If necessary, specify the correct location in the BuildParameters, or with the MSBUILD_EXE_PATH environment variable.</value>
     <comment>{StrBegin="MSB4193: "}</comment>
@@ -187,8 +193,8 @@
     <comment>{StrBegin="MSB4162: "}</comment>
   </data>
   <data name="ChildExitedPrematurely" UESanitized="false" Visibility="Public">
-    <value>MSB4166: Child node "{0}" exited prematurely. Shutting down. Diagnostic information may be found in files in the temporary files directory named MSBuild_*.failure.txt.</value>
-    <comment>{StrBegin="MSB4166: "}</comment>
+    <value>MSB4166: Child node "{0}" exited prematurely. Shutting down. Diagnostic information may be found in files in "{1}" and will be named MSBuild_*.failure.txt. This location can be changed by setting the MSBUILDDEBUGPATH environment variable to a different directory.{2}</value>
+    <comment>{StrBegin="MSB4166: "} {2} is exception text if any</comment>
   </data>
   <data name="ChooseMustContainWhen" UESanitized="false" Visibility="Public">
     <value>MSB4085: A &lt;Choose&gt; must contain at least one &lt;When&gt;.</value>
@@ -245,7 +251,7 @@
     <value>Importing the file "{0}" into the file "{1}" results in a circular dependency.</value>
     <comment>
        {0} is a file imported into the file "{1}" such that it results in a circular dependency. For e.g. if t1.targets imports
-       t2.targets and t2.targets tries to import t1.targets, then it results in a circular dependency. 
+       t2.targets and t2.targets tries to import t1.targets, then it results in a circular dependency.
     </comment>
   </data>
   <data name="SearchPathsForMSBuildExtensionsPath">
@@ -299,11 +305,11 @@
   <data name="UsedUninitializedProperty" Visibility="Public">
     <value>MSB4211: The property "{0}" is being set to a value for the first time, but it was already consumed at "{1}".</value>
     <comment>{StrBegin="MSB4211: "}</comment>
-  </data>  
+  </data>
   <data name="SelfImport" Visibility="Public">
     <value>MSB4210: "{0}" is attempting to import itself, directly or indirectly. This is most likely a build authoring error. The import will be ignored.</value>
     <comment>{StrBegin="MSB4210: "}</comment>
-  </data>  
+  </data>
   <data name="DuplicateProjectExtensions" UESanitized="false" Visibility="Public">
     <value>MSB4079: The &lt;ProjectExtensions&gt; element occurs more than once.</value>
     <comment>{StrBegin="MSB4079: "}</comment>
@@ -521,7 +527,7 @@
     </comment>
   </data>
   <data name="InvalidFunctionStaticMethodSyntax" UESanitized="false" Visibility="Public">
-    <value>MSB4186: Invalid static method invocation syntax: "{0}". {1} Static method invocation should be of the form: $([FullTypeName]::Method()), e.g. $([System.IO.Path]::Combine(`a`, `b`)). </value>
+    <value>MSB4186: Invalid static method invocation syntax: "{0}". {1} Static method invocation should be of the form: $([FullTypeName]::Method()), e.g. $([System.IO.Path]::Combine(`a`, `b`)). Check that all parameters are defined, are of the correct type, and are specified in the right order.</value>
     <comment>{StrBegin="MSB4186: "}
       UE: This message is shown when the user attempts to call a static method on a type, but has used the incorrect syntax
       LOCALIZATION: "{0}" is the function expression which is in error. "{1}" is a message from an FX exception that describes why the expression is bad.
@@ -801,6 +807,10 @@
     <value>MSB4205: The website project in this solution is targeting the v2.0 runtime, but it is not installed.</value>
     <comment>{StrBegin="MSB4205: "}</comment>
   </data>
+  <data name="AspNetCompiler.UnsupportedMSBuildVersion">
+    <value>MSB4249: Unable to build website project "{0}". The ASP.NET compiler is only available on the .NET Framework version of MSBuild.</value>
+    <comment>{StrBegin="MSB4249: "}</comment>
+  </data>
   <data name="AspNetCompiler.InvalidTargetFrameworkMonikerFromException">
     <value>MSB4204: {0}: Invalid TargetFrameworkMoniker {1}. {2}.</value>
     <comment>{StrBegin="MSB4204: "}</comment>
@@ -922,17 +932,21 @@
   </data>
   <data name="TargetSkippedFalseCondition" UESanitized="false" Visibility="Public">
     <value>Target "{0}" skipped, due to false condition; ({1}) was evaluated as ({2}).</value>
-  </data>  
-  
+  </data>
+  <data name="TargetSkippedWhenSkipNonexistentTargets" UESanitized="false" Visibility="Public">
+    <value>Target "{0}" skipped. The target does not exist in the project and SkipNonexistentTargets is set to true.</value>
+    <comment>LOCALIZATION: Do NOT localize "SkipNonexistentTargets" or "true".</comment>
+  </data>
+
   <!-- ====================================================================== -->
-  
+
   <!-- TargetStartedEventArgs: Project and File paths are different -->
   <data name="TargetStartedFileProject" UESanitized="false" Visibility="Public">
     <value>Target "{0}" in file "{1}" from project "{2}":</value>
-  </data>  
+  </data>
   <data name="TargetStartedFileProjectEntry" UESanitized="false" Visibility="Public">
     <value>Target "{0}" in file "{1}" from project "{2}" (entry point):</value>
-  </data>    
+  </data>
   <data name="TargetStartedFileProjectDepends" UESanitized="false" Visibility="Public">
     <value>Target "{0}" in file "{1}" from project "{2}" (target "{3}" depends on it):</value>
   </data>
@@ -941,15 +955,15 @@
   </data>
   <data name="TargetStartedFileProjectAfter" UESanitized="false" Visibility="Public">
     <value>Target "{0}" in file "{1}" from project "{2}" (designated to run after target "{3}"):</value>
-  </data> 
-  
+  </data>
+
   <!-- TargetStartedEventArgs: Project and File paths are the same -->
   <data name="TargetStarted" UESanitized="false" Visibility="Public">
     <value>Target "{0}" in project "{1}":</value>
-  </data>  
+  </data>
   <data name="TargetStartedProjectEntry" UESanitized="false" Visibility="Public">
     <value>Target "{0}" in project "{1}" (entry point):</value>
-  </data>    
+  </data>
   <data name="TargetStartedProjectDepends" UESanitized="false" Visibility="Public">
     <value>Target "{0}" in project "{1}" (target "{2}" depends on it):</value>
   </data>
@@ -958,28 +972,28 @@
   </data>
   <data name="TargetStartedProjectAfter" UESanitized="false" Visibility="Public">
     <value>Target "{0}" in project "{1}" (designated to run after target "{2}"):</value>
-  </data>   
-  
+  </data>
+
   <!-- Serial logger low verbosity -->
   <data name="TargetStartedPrefix" UESanitized="false" Visibility="Public">
     <value>Target {0}:</value>
   </data>
-  
+
   <!-- Serial logger high verbosity -->
   <data name="TargetStartedFromFile" UESanitized="false" Visibility="Public">
     <value>Target "{0}" in file "{1}":</value>
   </data>
-  
+
   <!-- Parallel logger low verbosity -->
   <data name="TargetStartedPrefixInProject" UESanitized="false" Visibility="Public">
     <value>Target {0} from project "{1}":</value>
   </data>
-  
+
   <!-- Parallel logger high verbosity -->
   <data name="TargetStartedFromFileInProject" UESanitized="false" Visibility="Public">
     <value>Target "{0}" in file "{1}" from project "{2}":</value>
   </data>
-  
+
   <!-- Log messages for item/property group -->
   <data name="ItemGroupIncludeLogMessagePrefix" UESanitized="false" Visibility="Public">
     <value>Added Item(s): </value>
@@ -990,7 +1004,7 @@
   <data name="PropertyGroupLogMessage" UESanitized="false" Visibility="Public">
     <value>Set Property: {0}={1}</value>
   </data>
-  
+
   <!-- Log messages for target outputs -->
   <data name="OutputItemParameterMessagePrefix" UESanitized="false" Visibility="Public">
     <value>Output Item(s): </value>
@@ -998,9 +1012,9 @@
   <data name="OutputPropertyLogMessage" UESanitized="false" Visibility="Public">
     <value>Output Property: {0}={1}</value>
   </data>
-  
+
   <!-- ====================================================================== -->
-  
+
   <data name="TaskContinuedDueToContinueOnError" UESanitized="false" Visibility="Public">
       <value>Build continuing because "{0}" on the task "{1}" is set to "{2}".</value>
   </data>
@@ -1118,7 +1132,7 @@
   </data>
   <data name="TaskParameterPrefix" UESanitized="false" Visibility="Public">
     <value>Task Parameter:</value>
-  </data>  
+  </data>
   <data name="TaskPerformanceSummary" UESanitized="false" Visibility="Public">
     <value>Task Performance Summary:</value>
   </data>
@@ -1196,8 +1210,32 @@
     <comment>{StrBegin="MSB4236: "}</comment>
   </data>
   <data name="CouldNotLoadSdkResolver" UESanitized="false" Visibility="Public">
-    <value>MSB4237: An SDK resolver was found but could not be loaded. Error: {0}.</value>
+    <value>MSB4237: The SDK resolver type "{0}" failed to load. {1}</value>
     <comment>{StrBegin="MSB4237: "}</comment>
+  </data>
+  <data name="CouldNotLoadSdkResolverAssembly" UESanitized="false" Visibility="Public">
+    <value>MSB4244: The SDK resolver assembly "{0}" could not be loaded. {1}</value>
+    <comment>{StrBegin="MSB4244: "}</comment>
+  </data>
+  <data name="CouldNotRunSdkResolver" UESanitized="false" Visibility="Public">
+    <value>MSB4242: The SDK resolver "{0}" failed to run. {1}</value>
+    <comment>{StrBegin="MSB4242: "}</comment>
+  </data>
+  <data name="CouldNotRunNuGetSdkResolver" UESanitized="false" Visibility="Public">
+    <value>MSB4243: The NuGet-based SDK resolver failed to run because NuGet assemblies could not be located.  Check your installation of MSBuild or set the environment variable "{0}" to the folder that contains the required NuGet assemblies. {1}</value>
+    <comment>{StrBegin="MSB4243: "}</comment>
+  </data>
+  <data name="SdkResolverManifestInvalid" UESanitized="false" Visibility="Public">
+    <value>MSB4245: SDK Resolver manifest file is invalid. This may indicate a corrupt or invalid installation of MSBuild. Manifest file path '{0}'. Message: {1}</value>
+    <comment>{StrBegin="MSB4245: "}</comment>
+  </data>
+  <data name="SdkResolverNoDllOrManifest" UESanitized="false" Visibility="Public">
+    <value>MSB4246: SDK Resolver folder exists but without an SDK Resolver DLL or manifest file. This may indicate a corrupt or invalid installation of MSBuild. SDK resolver path: {0}</value>
+    <comment>{StrBegin="MSB4246: "}</comment>
+  </data>
+  <data name="SdkResolverDllInManifestMissing" UESanitized="false" Visibility="Public">
+    <value>MSB4247: Could not load SDK Resolver. A manifest file exists, but the path to the SDK Resolver DLL file could not be found. Manifest file path '{0}'. SDK resolver path: {1}</value>
+    <comment>{StrBegin="MSB4247: "}</comment>
   </data>
   <data name="InvalidSdkElementName" UESanitized="false" Visibility="Public">
     <value>MSB4238: The name "{0}" is not a valid SDK name.</value>
@@ -1445,7 +1483,7 @@ Utilization:          {0} Average Utilization: {1:###.0}</value>
   </data>
   <data name="OM_CannotSaveFileLoadedAsReadOnly">
     <value>Project or targets file "{0}" was loaded in read-only mode, and cannot be saved.</value>
-  </data>  
+  </data>
   <!-- #################################################################################################-->
   <!-- ############################## Evaluation-model-related strings #################################-->
   <!-- #################################################################################################-->
@@ -1485,7 +1523,10 @@ Utilization:          {0} Average Utilization: {1:###.0}</value>
     <value>The project XML file "{0}" cannot be unloaded because at least one project "{1}" is still loaded which references that project XML.</value>
   </data>
   <data name="OM_ProjectInstanceImmutable">
-    <value>Instance object was created as immutable.</value>    
+    <value>Instance object was created as immutable.</value>
+  </data>
+  <data name="OM_NotEvaluatedBecauseShouldEvaluateForDesignTimeIsFalse">
+    <value>The specified API "{0}" is not available because ProjectLoadSettings.DoNotEvaluateElementsWithFalseCondition was set when loading this project.</value>
   </data>
   <!-- #################################################################################################-->
   <!-- ############################## Execution-model-related strings #################################-->
@@ -1553,7 +1594,7 @@ Utilization:          {0} Average Utilization: {1:###.0}</value>
     <comment>LOCALIZATION:  Do not localize the words "RunEachTargetSeparately", "BuildingInParallel", or "StopOnFirstFailure".</comment>
   </data>
 
-  <!-- 
+  <!--
   Some General properties replicated from tasks for MSBuild task
   TODO: Are these ever used anywhere else?
   -->
@@ -1579,13 +1620,13 @@ Utilization:          {0} Average Utilization: {1:###.0}</value>
   <data name="General.ProjectUndefineProperties">
     <value>Removing Properties for project "{0}":</value>
   </data>
-  
+
   <!-- Engine errors for features not supported on .NET Core have the arbitrarily-chosen 48 prefix -->
   <data name="TaskInstantiationFailureNotSupported" xml:space="preserve">
     <value>MSB4802: The "{0}" task could not be instantiated from "{1}". This version of MSBuild does not support {2}.</value>
     <comment>{StrBegin="MSB4802: "}</comment>
   </data>
-  
+
   <data name="InvalidGetPathOfFileAboveParameter">
     <value>The parameter '{0}' can only be a file name and cannot include a directory.</value>
   </data>
@@ -1605,10 +1646,14 @@ Utilization:          {0} Average Utilization: {1:###.0}</value>
     <comment>{StrBegin="MSB4231: "}</comment>
   </data>
 
+  <data name="MetaprojectGenerated">
+    <value>Metaproject &quot;{0}&quot; generated.</value>
+  </data>
+
   <data name="ProjectImportSkippedFalseCondition">
     <value>Project &quot;{0}&quot; was not imported by &quot;{1}&quot; at ({2},{3}), due to false condition; ({4}) was evaluated as ({5}).</value>
   </data>
-  
+
   <data name="ProjectImportSkippedNoMatches">
     <value>Project &quot;{0}&quot; was not imported by &quot;{1}&quot; at ({2},{3}), due to no matching files.</value>
   </data>
@@ -1616,19 +1661,116 @@ Utilization:          {0} Average Utilization: {1:###.0}</value>
   <data name="ProjectImportSkippedEmptyFile">
     <value>Project &quot;{0}&quot; was not imported by &quot;{1}&quot; at ({2},{3}), due to the file being empty.</value>
   </data>
-  
+
+  <data name="ProjectImportSkippedInvalidFile">
+    <value>Project &quot;{0}&quot; was not imported by &quot;{1}&quot; at ({2},{3}), due to the file being invalid.</value>
+  </data>
+
+  <data name="ProjectImportSkippedMissingFile">
+    <value>Project &quot;{0}&quot; was not imported by &quot;{1}&quot; at ({2},{3}), due to the file not existing.</value>
+  </data>
+
   <data name="ProjectImported">
     <value>Importing project &quot;{0}&quot; into project &quot;{1}&quot; at ({2},{3}).</value>
   </data>
-
+  <data name="ErrorWritingProfilerReport" xml:space="preserve">
+    <value>MSBUILD : error MSB4239: Error writing profiling report. {0}</value>
+  </data>
+  <data name="WritingProfilerReport" xml:space="preserve">
+    <value>Writing profiler report to '{0}'...</value>
+  </data>
+  <data name="WritingProfilerReportDone" xml:space="preserve">
+    <value>Done writing report.</value>
+  </data>
+  <data name="ReferencingMultipleVersionsOfTheSameSdk" UESanitized="false" Visibility="Public">
+    <value>MSB4240: Multiple versions of the same SDK "{0}" cannot be specified. The previously resolved SDK version "{1}" from location "{2}" will be used and the version "{3}" will be ignored.</value>
+    <comment>{StrBegin="MSB4240: "}
+      LOCALIZATION:  Do not localize the word SDK.
+    </comment>
+  </data>
+  <data name="SdkResultVersionDifferentThanReference" UESanitized="false" Visibility="Public">
+    <value>MSB4241: The SDK reference "{0}" version "{1}" was resolved to version "{2}" instead.  You could be using a different version than expected if you do not update the referenced version to match.</value>
+    <comment>{StrBegin="MSB4241: "}
+      LOCALIZATION:  Do not localize the word SDK.
+    </comment>
+  </data>
+  <data name="SdkResolving" UESanitized="false" Visibility="Public">
+    <value>Resolving SDK '{0}'...</value>
+    <comment>
+      LOCALIZATION:  Do not localize the word SDK.
+    </comment>
+  </data>
+  <data name="ProjectGraphDoesNotSupportProjectReferenceWithToolset" UESanitized="false" Visibility="Public">
+    <value>MSB4250: ProjectGraph does not support ProjectReference items with the ToolsVersion metadata set. Found ProjectReference "{0}" with ToolsVersion in file "{1}"</value>
+    <comment>
+      {StrBegin="MSB4250: "}
+      LOCALIZATION:  Do not localize the following words: ProjectGraph, ProjectReference, ToolsVersion.
+    </comment>
+  </data>
+  <data name="CircularDependencyInProjectGraph" UESanitized="false" Visibility="Public">
+    <value>MSB4251: There is a circular dependency involving the following projects: {0}</value>
+    <comment>
+      {StrBegin="MSB4251:"} This message is shown when a graph build detects a target referenced in a circular manner -- a project cannot
+      request a target to build itself (perhaps via a chain of other targets)
+    </comment>
+  </data>
+  <data name="CacheMissesNotAllowedInIsolatedGraphBuilds" UESanitized="false" Visibility="Public">
+    <value>MSB4252: Project "{0}" has a reference to "{1}" ({2} target(s)) but the build result for the reference is not in the engine cache. In isolated builds this could mean one of the following:
+    - the reference was not explicitly specified as a ProjectReference item in "{0}"
+    - the reference was not included in the provided input caches
+    - the reference was called with a target which is not specified in the ProjectReferenceTargets item in "{0}"
+    </value>
+    <comment>
+      {StrBegin="MSB4252:"}
+      LOCALIZATION: Do not localize the following words: ProjectReference.
+    </comment>
+  </data>
+  <data name="NullReferenceFromProjectInstanceFactory" UESanitized="false" Visibility="Public">
+    <value>MSB4253: A null reference was returned from a user-provided ProjectInstanceFactoryFunc callback. This is not allowed.</value>
+    <comment>
+      {StrBegin="MSB4253: "}
+      LOCALIZATION:  Do not localize the following words: ProjectInstanceFactoryFunc.
+    </comment>
+  </data>
+  <data name="UndeclaredMSBuildTasksNotAllowedInIsolatedGraphBuilds" UESanitized="false" Visibility="Public">
+    <value>MSB4254: The MSBuild task is building project(s) {0} which are not specified in the ProjectReference item. In isolated builds this probably means that the references are not explicitly specified as a ProjectReference item in "{1}"</value>
+    <comment>
+      {StrBegin="MSB4254:"}
+      LOCALIZATION: Do not localize the following words: ProjectReference, MSBuild, task.
+    </comment>
+  </data>
+  <data name="ErrorReadingCacheFile" UESanitized="false" Visibility="Public">
+    <value>MSB4256: Reading input result cache files from path "{0}" encountered an error: {1}</value>
+  </data>
+  <data name="InputCacheFilesDoNotExist" UESanitized="false" Visibility="Public">
+    <value>MSB4255: The following input result cache files do not exist: "{0}"</value>
+  </data>
+  <data name="EmptyOutputCacheFile" UESanitized="false" Visibility="Public">
+    <value>MSB4257: The specified output result cache file is empty.</value>
+  </data>
+  <data name="ErrorWritingCacheFile" UESanitized="false" Visibility="Public">
+    <value>MSB4258: Writing output result cache file in path "{0}" encountered an error: {1}</value>
+  </data>
+  <data name="UsingInputCaches" UESanitized="false" Visibility="Public">
+    <value>Using input build results caches: {0}</value>
+    <comment>
+      LOCALIZATION: {0} is a list of semicolon separated file paths
+    </comment>
+  </data>
+  <data name="WritingToOutputCache" UESanitized="false" Visibility="Public">
+    <value>Writing build results caches to: {0}</value>
+    <comment>
+      LOCALIZATION: {0} is a file path
+    </comment>
+  </data>
   <!--
         The engine message bucket is: MSB4001 - MSB4999
-        
+
         MSB4128 is being used in FileLogger.cs (can't be added here yet as strings are currently frozen)
         MSB4129 is used by Shared\XmlUtilities.cs (can't be added here yet as strings are currently frozen)
 
-        Next message code should be MSB4239.
-              
+        Next message code should be MSB4259.
+
         Some unused codes which can also be reused (because their messages were deleted, and UE hasn't indexed the codes yet):
             <none>
 

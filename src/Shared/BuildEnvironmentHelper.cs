@@ -7,6 +7,8 @@ using System.IO;
 using System.Linq;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using System.Threading;
+using Microsoft.Build.Shared.FileSystem;
 
 namespace Microsoft.Build.Shared
 {
@@ -14,35 +16,21 @@ namespace Microsoft.Build.Shared
     {
         // Since this class is added as 'link' to shared source in multiple projects,
         // MSBuildConstants.CurrentVisualStudioVersion is not available in all of them.
-        private const string CurrentVisualStudioVersion = "15.0";
+        private const string CurrentVisualStudioVersion = "16.0";
 
         // MSBuildConstants.CurrentToolsVersion
-        private const string CurrentToolsVersion = "15.0";
-
-        // Duplicated in InternalErrorException.cs. Update both when changing.
-        private static readonly string[] s_testRunners =
-        {
-            "XUNIT", "NUNIT", "MSTEST", "VSTEST", "TASKRUNNER",
-            "VSTESTHOST", "QTAGENT32", "CONCURRENT", "RESHARPER", "MDHOST", "TE.PROCESSHOST",
-            "JetBrains.ReSharper.TaskRunner.CLR4.x64", "JetBrains.ReSharper.TaskRunner.CLR45"
-        };
-
-        private static readonly string[] s_testAssemblies =
-        {
-            "Microsoft.Build.Tasks.UnitTests", "Microsoft.Build.Engine.UnitTests", "Microsoft.Build.Utilities.UnitTests",
-            "Microsoft.Build.CommandLine.UnitTests", "Microsoft.Build.Engine.OM.UnitTests",
-            "Microsoft.Build.Framework.UnitTests"
-        };
+        private const string CurrentToolsVersion = "Current";
 
         /// <summary>
         /// Name of the Visual Studio (and Blend) process.
+        // VS ASP intellisense server fails without Microsoft.VisualStudio.Web.Host. Remove when issue fixed: https://devdiv.visualstudio.com/DevDiv/_workitems/edit/574986
         /// </summary>
-        private static readonly string[] s_visualStudioProcess = {"DEVENV", "BLEND"};
+        private static readonly string[] s_visualStudioProcess = {"DEVENV", "BLEND", "Microsoft.VisualStudio.Web.Host"};
 
         /// <summary>
         /// Name of the MSBuild process(es)
         /// </summary>
-        private static readonly string[] s_msBuildProcess = {"MSBUILD"};
+        private static readonly string[] s_msBuildProcess = {"MSBUILD", "MSBUILDTASKHOST"};
 
         /// <summary>
         /// Name of MSBuild executable files.
@@ -105,13 +93,29 @@ namespace Microsoft.Build.Shared
                     return env;
             }
 
-            // If we can't find a suitable environment, continue in the 'None' mode. For the CurrentMSBuildExePath
-            // value we will use the current running process. This is likely wrong, but many things use the
-            // CurrentMSBuildToolsDirectory value which must be set for basic functionality to work.
+            // If we can't find a suitable environment, continue in the 'None' mode. If not running tests,
+            // we will use the current running process for the CurrentMSBuildExePath value.  This is likely
+            // wrong, but many things use the CurrentMSBuildToolsDirectory value which must be set for basic
+            // functionality to work.
+            //
+            // If we are running tests, then the current running process may be a test runner located in the
+            // NuGet packages folder.  So in that case, we use the location of the current assembly, which
+            // will be in the output path of the test project, which is what we want.
+
+            string msbuildExePath;
+            if (s_runningTests())
+            {
+                msbuildExePath = typeof(BuildEnvironmentHelper).Assembly.Location;
+            }
+            else
+            {
+                msbuildExePath = s_getProcessFromRunningProcess();
+            }
+
             return new BuildEnvironment(
                 BuildEnvironmentMode.None,
-                s_getProcessFromRunningProcess(),
-                runningTests: CheckIfRunningTests(),
+                msbuildExePath,
+                runningTests: s_runningTests(),
                 runningInVisualStudio: false,
                 visualStudioPath: null);
         }
@@ -120,11 +124,16 @@ namespace Microsoft.Build.Shared
         {
             var msBuildExePath = s_getEnvironmentVariable("MSBUILD_EXE_PATH");
 
-            return TryFromStandaloneMSBuildExe(msBuildExePath);
+            return msBuildExePath == null
+                ? null
+                : TryFromMSBuildAssemblyUnderVisualStudio(msBuildExePath, msBuildExePath, true) ?? TryFromStandaloneMSBuildExe(msBuildExePath);
         }
 
         private static BuildEnvironment TryFromVisualStudioProcess()
         {
+            if (!NativeMethodsShared.IsWindows)
+                return null;
+
             var vsProcess = s_getProcessFromRunningProcess();
             if (!IsProcessInList(vsProcess, s_visualStudioProcess)) return null;
 
@@ -146,7 +155,7 @@ namespace Microsoft.Build.Shared
 
             // First check if we're in a VS installation
             if (NativeMethodsShared.IsWindows &&
-                Regex.IsMatch(msBuildExe, $@".*\\MSBuild\\{CurrentToolsVersion}\\Bin\\.*MSBuild\.exe", RegexOptions.IgnoreCase))
+                Regex.IsMatch(msBuildExe, $@".*\\MSBuild\\{CurrentToolsVersion}\\Bin\\.*MSBuild(?:TaskHost)?\.exe", RegexOptions.IgnoreCase))
             {
                 return new BuildEnvironment(
                     BuildEnvironmentMode.VisualStudio,
@@ -175,25 +184,16 @@ namespace Microsoft.Build.Shared
             var msBuildDll = Path.Combine(FileUtilities.GetFolderAbove(buildAssembly), "MSBuild.dll");
 
             // First check if we're in a VS installation
-            if (NativeMethodsShared.IsWindows &&
-                Regex.IsMatch(buildAssembly, $@".*\\MSBuild\\{CurrentToolsVersion}\\Bin\\.*", RegexOptions.IgnoreCase))
+            var environment = TryFromMSBuildAssemblyUnderVisualStudio(buildAssembly, msBuildExe);
+            if (environment != null)
             {
-                // In a Visual Studio path we must have MSBuild.exe
-                if (File.Exists(msBuildExe))
-                {
-                    return new BuildEnvironment(
-                        BuildEnvironmentMode.VisualStudio,
-                        msBuildExe,
-                        runningTests: CheckIfRunningTests(),
-                        runningInVisualStudio: false,
-                        visualStudioPath: GetVsRootFromMSBuildAssembly(msBuildExe));
-                }
+                return environment;
             }
 
             // We're not in VS, check for MSBuild.exe / dll to consider this a standalone environment.
             string msBuildPath = null;
-            if (File.Exists(msBuildExe)) msBuildPath = msBuildExe;
-            else if (File.Exists(msBuildDll)) msBuildPath = msBuildDll;
+            if (FileSystems.Default.FileExists(msBuildExe)) msBuildPath = msBuildExe;
+            else if (FileSystems.Default.FileExists(msBuildDll)) msBuildPath = msBuildDll;
 
             if (!string.IsNullOrEmpty(msBuildPath))
             {
@@ -201,7 +201,7 @@ namespace Microsoft.Build.Shared
                 return new BuildEnvironment(
                     BuildEnvironmentMode.Standalone,
                     msBuildPath,
-                    runningTests: CheckIfRunningTests(),
+                    runningTests: s_runningTests(),
                     runningInVisualStudio: false,
                     visualStudioPath: null);
             }
@@ -210,14 +210,45 @@ namespace Microsoft.Build.Shared
 
         }
 
+        private static BuildEnvironment TryFromMSBuildAssemblyUnderVisualStudio(string msbuildAssembly, string msbuildExe, bool allowLegacyToolsVersion = false)
+        {
+            string msBuildPathPattern = allowLegacyToolsVersion
+                ? $@".*\\MSBuild\\({CurrentToolsVersion}|\d+\.0)\\Bin\\.*"
+                : $@".*\\MSBuild\\{CurrentToolsVersion}\\Bin\\.*";
+
+            if (NativeMethodsShared.IsWindows &&
+                Regex.IsMatch(msbuildAssembly, msBuildPathPattern, RegexOptions.IgnoreCase))
+            {
+                // In a Visual Studio path we must have MSBuild.exe
+                if (FileSystems.Default.FileExists(msbuildExe))
+                {
+                    return new BuildEnvironment(
+                        BuildEnvironmentMode.VisualStudio,
+                        msbuildExe,
+                        runningTests: s_runningTests(),
+                        runningInVisualStudio: false,
+                        visualStudioPath: GetVsRootFromMSBuildAssembly(msbuildExe));
+                }
+            }
+
+            return null;
+        }
+
         private static BuildEnvironment TryFromDevConsole()
         {
+            if (s_runningTests())
+            {
+                //  If running unit tests, then don't try to get the build environment from MSBuild installed on the machine
+                //  (we should be using the locally built MSBuild instead)
+                return null;
+            }
+
             // VSINSTALLDIR and VisualStudioVersion are set from the Developer Command Prompt.
             var vsInstallDir = s_getEnvironmentVariable("VSINSTALLDIR");
             var vsVersion = s_getEnvironmentVariable("VisualStudioVersion");
 
             if (string.IsNullOrEmpty(vsInstallDir) || string.IsNullOrEmpty(vsVersion) ||
-                vsVersion != CurrentVisualStudioVersion || !Directory.Exists(vsInstallDir)) return null;
+                vsVersion != CurrentVisualStudioVersion || !FileSystems.Default.DirectoryExists(vsInstallDir)) return null;
 
             return new BuildEnvironment(
                 BuildEnvironmentMode.VisualStudio,
@@ -229,9 +260,16 @@ namespace Microsoft.Build.Shared
 
         private static BuildEnvironment TryFromSetupApi()
         {
+            if (s_runningTests())
+            {
+                //  If running unit tests, then don't try to get the build environment from MSBuild installed on the machine
+                //  (we should be using the locally built MSBuild instead)
+                return null;
+            }
+
             Version v = new Version(CurrentVisualStudioVersion);
             var instances = s_getVisualStudioInstances()
-                .Where(i => i.Version.Major == v.Major && Directory.Exists(i.Path))
+                .Where(i => i.Version.Major == v.Major && FileSystems.Default.DirectoryExists(i.Path))
                 .ToList();
 
             if (instances.Count == 0) return null;
@@ -267,13 +305,13 @@ namespace Microsoft.Build.Shared
 
         private static BuildEnvironment TryFromStandaloneMSBuildExe(string msBuildExePath)
         {
-            if (!string.IsNullOrEmpty(msBuildExePath) && File.Exists(msBuildExePath))
+            if (!string.IsNullOrEmpty(msBuildExePath) && FileSystems.Default.FileExists(msBuildExePath))
             {
                 // MSBuild.exe was found outside of Visual Studio. Assume Standalone mode.
                 return new BuildEnvironment(
                     BuildEnvironmentMode.Standalone,
                     msBuildExePath,
-                    runningTests: CheckIfRunningTests(),
+                    runningTests: s_runningTests(),
                     runningInVisualStudio: false,
                     visualStudioPath: null);
             }
@@ -284,7 +322,7 @@ namespace Microsoft.Build.Shared
         private static string GetVsRootFromMSBuildAssembly(string msBuildAssembly)
         {
             return FileUtilities.GetFolderAbove(msBuildAssembly,
-                Regex.IsMatch(msBuildAssembly, $@".\\MSBuild\\{CurrentToolsVersion}\\Bin\\Amd64\\MSBuild\.exe", RegexOptions.IgnoreCase)
+                Regex.IsMatch(msBuildAssembly, $@"\\Bin\\Amd64\\MSBuild\.exe", RegexOptions.IgnoreCase)
                     ? 5
                     : 4);
         }
@@ -294,28 +332,33 @@ namespace Microsoft.Build.Shared
             return FileUtilities.CombinePaths(visualStudioRoot, "MSBuild", CurrentToolsVersion, "Bin", "MSBuild.exe");
         }
 
+        private static bool? _runningTests;
+        private static readonly object _runningTestsLock = new object();
+
         private static bool CheckIfRunningTests()
         {
-            var runningProcess = s_getProcessFromRunningProcess();
-
-            // First check if we're running in a known test runner.
-            if (IsProcessInList(runningProcess, s_testRunners))
+            if (_runningTests != null)
             {
-#if FEATURE_APPDOMAIN
-                // If we are, then ensure we're running MSBuild's tests by seeing if any of our assemblies are loaded.
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    if (
-                        s_testAssemblies.Any(
-                            item => item.Equals(assembly.GetName().Name, StringComparison.InvariantCultureIgnoreCase)))
-                        return true;
-                }
-#else
-                return true;
-#endif
+                return _runningTests.Value;
             }
 
-            return false;
+            lock (_runningTestsLock)
+            {
+                if (_runningTests != null)
+                {
+                    return _runningTests.Value;
+                }
+
+                //  Check if running tests via the TestInfo class in Microsoft.Build.Framework.
+                //  See the comments on the TestInfo class for an explanation of why it works this way.
+                var frameworkAssembly = typeof(Framework.ITask).Assembly;
+                var testInfoType = frameworkAssembly.GetType("Microsoft.Build.Framework.TestInfo");
+                var runningTestsField = testInfoType.GetField("s_runningTests", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+
+                _runningTests = (bool)runningTestsField.GetValue(null);
+
+                return _runningTests.Value;
+            }
         }
 
         /// <summary>
@@ -326,16 +369,24 @@ namespace Microsoft.Build.Shared
         /// <returns></returns>
         private static bool IsProcessInList(string processName, string[] processList)
         {
-            return
-                processList.Any(
-                    s =>
-                        Path.GetFileNameWithoutExtension(processName)?
-                            .IndexOf(s, StringComparison.OrdinalIgnoreCase) >= 0);
+            var processFileName = Path.GetFileNameWithoutExtension(processName);
+
+            if (string.IsNullOrEmpty(processFileName))
+            {
+                return false;
+            }
+
+            return processList.Any(s =>
+                processFileName.Equals(s, StringComparison.OrdinalIgnoreCase));
         }
 
         private static string GetProcessFromRunningProcess()
         {
+#if RUNTIME_TYPE_NETCORE
+            return AssemblyUtilities.GetAssemblyLocation(AssemblyUtilities.EntryAssembly);
+#else
             return Process.GetCurrentProcess().MainModule.FileName;
+#endif
         }
 
         private static string GetExecutingAssemblyPath()
@@ -363,13 +414,17 @@ namespace Microsoft.Build.Shared
         internal static void ResetInstance_ForUnitTestsOnly(Func<string> getProcessFromRunningProcess = null,
             Func<string> getExecutingAssemblyPath = null, Func<string> getAppContextBaseDirectory = null,
             Func<IEnumerable<VisualStudioInstance>> getVisualStudioInstances = null,
-            Func<string, string> getEnvironmentVariable = null)
+            Func<string, string> getEnvironmentVariable = null,
+            Func<bool> runningTests = null)
         {
             s_getProcessFromRunningProcess = getProcessFromRunningProcess ?? GetProcessFromRunningProcess;
             s_getExecutingAssemblyPath = getExecutingAssemblyPath ?? GetExecutingAssemblyPath;
             s_getAppContextBaseDirectory = getAppContextBaseDirectory ?? GetAppContextBaseDirectory;
             s_getVisualStudioInstances = getVisualStudioInstances ?? VisualStudioLocationHelper.GetInstances;
             s_getEnvironmentVariable = getEnvironmentVariable ?? GetEnvironmentVariable;
+
+            //  Tests which specifically test the BuildEnvironmentHelper need it to be able to act as if it is not running tests
+            s_runningTests = runningTests ?? CheckIfRunningTests;
 
             BuildEnvironmentHelperSingleton.s_instance = Initialize();
         }
@@ -379,6 +434,7 @@ namespace Microsoft.Build.Shared
         private static Func<string> s_getAppContextBaseDirectory = GetAppContextBaseDirectory;
         private static Func<IEnumerable<VisualStudioInstance>> s_getVisualStudioInstances = VisualStudioLocationHelper.GetInstances;
         private static Func<string, string> s_getEnvironmentVariable = GetEnvironmentVariable;
+        private static Func<bool> s_runningTests = CheckIfRunningTests;
 
 
         private static class BuildEnvironmentHelperSingleton
@@ -552,7 +608,7 @@ namespace Microsoft.Build.Shared
 
         /// <summary>
         /// Path to the root Visual Studio install directory
-        /// (e.g. 'c:\Program Files (x86)\Microsoft Visual Studio 15.0')
+        /// (e.g. 'C:\Program Files (x86)\Microsoft Visual Studio\Preview\Enterprise')
         /// </summary>
         internal string VisualStudioInstallRootDirectory { get; }
 

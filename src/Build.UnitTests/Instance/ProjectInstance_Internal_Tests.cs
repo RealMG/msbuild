@@ -1,9 +1,5 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Tests for ProjectInstance internal members</summary>
-//-----------------------------------------------------------------------
 
 using System.Collections.Generic;
 using Microsoft.Build.Execution;
@@ -21,6 +17,7 @@ using Microsoft.Build.Engine.UnitTests;
 using Microsoft.Build.Shared;
 using Microsoft.Build.UnitTests.BackEnd;
 using Microsoft.Build.Utilities;
+using Shouldly;
 using Xunit;
 using Xunit.Abstractions;
 using static Microsoft.Build.Engine.UnitTests.TestComparers.ProjectInstanceModelTestComparers;
@@ -236,8 +233,8 @@ namespace Microsoft.Build.UnitTests.OM.Instance
             List<ProjectItemGroupTaskMetadataInstance> metadata3 = Helpers.MakeList(items[2].Metadata);
 
             Assert.Equal(2, metadata1.Count);
-            Assert.Equal(0, metadata2.Count);
-            Assert.Equal(1, metadata3.Count);
+            Assert.Empty(metadata2);
+            Assert.Single(metadata3);
 
             Assert.Equal("c3", metadata1[0].Condition);
             Assert.Equal("m1", metadata1[0].Value);
@@ -256,7 +253,7 @@ namespace Microsoft.Build.UnitTests.OM.Instance
         {
             ProjectInstance p = GetSampleProjectInstance();
 
-            Assert.Equal(true, p.TaskRegistry != null);
+            Assert.True(p.TaskRegistry != null);
         }
 
         /// <summary>
@@ -280,6 +277,18 @@ namespace Microsoft.Build.UnitTests.OM.Instance
             ProjectInstance p = GetSampleProjectInstance();
 
             Assert.Equal(ObjectModelHelpers.MSBuildDefaultToolsVersion, p.Toolset.ToolsVersion);
+        }
+
+        [Fact]
+        public void UsingExplicitToolsVersionShouldBeFalseWhenNoToolsetIsReferencedInProject()
+        {
+            var projectInstance = new ProjectInstance(
+                new ProjectRootElement(
+                    XmlReader.Create(new StringReader("<Project></Project>")), ProjectCollection.GlobalProjectCollection.ProjectRootElementCache, false, false)
+                );
+
+            projectInstance.UsingDifferentToolsVersionFromProjectFile.ShouldBeFalse();
+
         }
 
         /// <summary>
@@ -537,7 +546,7 @@ namespace Microsoft.Build.UnitTests.OM.Instance
 
             ProjectInstance second = first.DeepCopy();
 
-            Assert.Equal(true, second.TranslateEntireState);
+            Assert.True(second.TranslateEntireState);
         }
 
         /// <summary>
@@ -676,7 +685,7 @@ namespace Microsoft.Build.UnitTests.OM.Instance
 
             original.TranslateEntireState = true;
 
-            ((INodePacketTranslatable) original).Translate(TranslationHelpers.GetWriteTranslator());
+            ((ITranslatable) original).Translate(TranslationHelpers.GetWriteTranslator());
             var copy = ProjectInstance.FactoryForDeserialization(TranslationHelpers.GetReadTranslator());
 
             Assert.Equal(original, copy, new ProjectInstanceComparer());
@@ -719,7 +728,7 @@ namespace Microsoft.Build.UnitTests.OM.Instance
                     pi.AddItem("foo", "bar");
                     pi.TranslateEntireState = true;
 
-                    ((INodePacketTranslatable) pi).Translate(TranslationHelpers.GetWriteTranslator());
+                    ((ITranslatable) pi).Translate(TranslationHelpers.GetWriteTranslator());
                     var copy = ProjectInstance.FactoryForDeserialization(TranslationHelpers.GetReadTranslator());
 
                     return copy;

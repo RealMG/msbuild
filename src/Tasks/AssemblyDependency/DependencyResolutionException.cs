@@ -13,13 +13,6 @@ namespace Microsoft.Build.Tasks
     internal sealed class DependencyResolutionException : Exception
     {
         /// <summary>
-        /// Don't allow default construction.
-        /// </summary>
-        private DependencyResolutionException()
-        {
-        }
-
-        /// <summary>
         /// Construct
         /// </summary>
         internal DependencyResolutionException(string message, Exception innerException)
@@ -27,7 +20,6 @@ namespace Microsoft.Build.Tasks
         {
         }
 
-#if FEATURE_BINARY_SERIALIZATION
         /// <summary>
         /// Construct
         /// </summary>
@@ -35,6 +27,5 @@ namespace Microsoft.Build.Tasks
             : base(info, context)
         {
         }
-#endif
     }
 }

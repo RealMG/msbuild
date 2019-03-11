@@ -1,9 +1,5 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Tests for the TaskHost</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using Microsoft.Build.Framework;
@@ -82,7 +78,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             BuildRequestEntry entry = new BuildRequestEntry(buildRequest, configuration);
 
             BuildResult buildResult = new BuildResult(buildRequest, false);
-            buildResult.AddResultsForTarget("Build", new TargetResult(new TaskItem[] { new TaskItem("IamSuper", configuration.ProjectFullPath) }, TestUtilities.GetSkippedResult()));
+            buildResult.AddResultsForTarget("Build", new TargetResult(new TaskItem[] { new TaskItem("IamSuper", configuration.ProjectFullPath) }, BuildResultUtilities.GetSkippedResult()));
             _mockRequestCallback = new MockIRequestBuilderCallback(new BuildResult[] { buildResult });
             entry.Builder = (IRequestBuilder)_mockRequestCallback;
 
@@ -316,7 +312,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
 
             // Make sure our custom logger received the actual custom event and not some fake.
             Assert.True(_customLogger.LastMessage is BuildMessageEventArgs); // "Expected Message Event"
-            Assert.Equal(_customLogger.LastMessage.Importance, MessageImportance.High); // "Expected Message importance to be high"
+            Assert.Equal(MessageImportance.High, _customLogger.LastMessage.Importance); // "Expected Message importance to be high"
         }
 
         /// <summary>
@@ -346,7 +342,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
 
             // Make sure our custom logger received the actual custom event and not some fake.
             Assert.True(_customLogger.LastError is BuildErrorEventArgs); // "Expected Error Event"
-            Assert.True(_customLogger.LastError.Message.Contains("SubCategory")); // "Expected line number to be 0"
+            Assert.Contains("SubCategory", _customLogger.LastError.Message); // "Expected line number to be 0"
         }
 
         /// <summary>
@@ -360,7 +356,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
 
             // Make sure our custom logger received the actual custom event and not some fake.
             Assert.True(_customLogger.LastWarning is MyCustomBuildWarningEventArgsNotSerializable); // "Expected Warning Event"
-            Assert.True(_customLogger.LastWarning.Message.Contains("SubCategory")); // "Expected line number to be 0"
+            Assert.Contains("SubCategory", _customLogger.LastWarning.Message); // "Expected line number to be 0"
         }
 
         /// <summary>
@@ -374,7 +370,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
 
             // Make sure our custom logger received the actual custom event and not some fake.
             Assert.True(_customLogger.LastMessage is MyCustomMessageEventNotSerializable); // "Expected Message Event"
-            Assert.True(_customLogger.LastMessage.Message.Contains("message")); // "Expected Message importance to be high"
+            Assert.Contains("message", _customLogger.LastMessage.Message); // "Expected Message importance to be high"
         }
 
         /// <summary>
@@ -388,7 +384,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
 
             // Make sure our custom logger received the actual custom event and not some fake.
             Assert.True(_customLogger.LastCustom is MyCustomBuildEventArgsNotSerializable); // "Expected custom build Event"
-            Assert.Equal(_customLogger.LastCustom.Message, "testCustomBuildEvent");
+            Assert.Equal("testCustomBuildEvent", _customLogger.LastCustom.Message);
         }
 
         /// <summary>
@@ -408,8 +404,8 @@ namespace Microsoft.Build.UnitTests.BackEnd
             Assert.Null(_customLogger.LastError); // "Expected no error Event"
             Assert.True(_customLogger.LastWarning is BuildWarningEventArgs); // "Expected Warning Event"
 
-            string message = ResourceUtilities.FormatResourceString("ExpectedEventToBeSerializable", e.GetType().Name);
-            Assert.True(_customLogger.LastWarning.Message.Contains(message)); // "Expected line to contain NotSerializable message but it did not"
+            string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword("ExpectedEventToBeSerializable", e.GetType().Name);
+            Assert.Contains(message, _customLogger.LastWarning.Message); // "Expected line to contain NotSerializable message but it did not"
         }
 
         /// <summary>
@@ -427,8 +423,8 @@ namespace Microsoft.Build.UnitTests.BackEnd
             Assert.True(_customLogger.LastWarning is BuildWarningEventArgs); // "Expected Warning Event"
             Assert.Equal(1, _customLogger.NumberOfWarning); // "Expected there to be only one warning"
 
-            string message = ResourceUtilities.FormatResourceString("ExpectedEventToBeSerializable", e.GetType().Name);
-            Assert.True(_customLogger.LastWarning.Message.Contains(message)); // "Expected line to contain NotSerializable message but it did not"
+            string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword("ExpectedEventToBeSerializable", e.GetType().Name);
+            Assert.Contains(message, _customLogger.LastWarning.Message); // "Expected line to contain NotSerializable message but it did not"
         }
 
         /// <summary>
@@ -447,8 +443,8 @@ namespace Microsoft.Build.UnitTests.BackEnd
             Assert.True(_customLogger.LastWarning is BuildWarningEventArgs); // "Expected Warning Event"
             Assert.Equal(1, _customLogger.NumberOfWarning); // "Expected there to be only one warning"
 
-            string message = ResourceUtilities.FormatResourceString("ExpectedEventToBeSerializable", e.GetType().Name);
-            Assert.True(_customLogger.LastWarning.Message.Contains(message)); // "Expected line to contain NotSerializable message but it did not"
+            string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword("ExpectedEventToBeSerializable", e.GetType().Name);
+            Assert.Contains(message, _customLogger.LastWarning.Message); // "Expected line to contain NotSerializable message but it did not"
         }
 
         /// <summary>
@@ -467,8 +463,8 @@ namespace Microsoft.Build.UnitTests.BackEnd
             // Make sure our custom logger received the actual custom event and not some fake.
             Assert.True(_customLogger.LastWarning is BuildWarningEventArgs); // "Expected Warning Event"
             Assert.Equal(1, _customLogger.NumberOfWarning); // "Expected there to be only one warning"
-            string message = ResourceUtilities.FormatResourceString("ExpectedEventToBeSerializable", e.GetType().Name);
-            Assert.True(_customLogger.LastWarning.Message.Contains(message)); // "Expected line to contain NotSerializable message but it did not"
+            string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword("ExpectedEventToBeSerializable", e.GetType().Name);
+            Assert.Contains(message, _customLogger.LastWarning.Message); // "Expected line to contain NotSerializable message but it did not"
         }
         #endregion
 
@@ -823,14 +819,12 @@ namespace Microsoft.Build.UnitTests.BackEnd
         {
             //  If binary serialization is not available, then we use a simple serializer which relies on a default constructor.  So to test
             //  what happens for an event that's not serializable, don't include a default constructor.
-#if FEATURE_BINARY_SERIALIZATION
             /// <summary>
             /// Default constructor
             /// </summary>
             public MyCustomBuildEventArgsNotSerializable() : base()
             {
             }
-#endif
 
             /// <summary>
             /// Constructor which takes a message
@@ -1196,7 +1190,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             /// <summary>
             /// Mock of the BuildProjects method on the callback.
             /// </summary>
-            public Task<BuildResult[]> BuildProjects(string[] projectFiles, PropertyDictionary<ProjectPropertyInstance>[] properties, string[] toolsVersions, string[] targets, bool waitForResults)
+            public Task<BuildResult[]> BuildProjects(string[] projectFiles, PropertyDictionary<ProjectPropertyInstance>[] properties, string[] toolsVersions, string[] targets, bool waitForResults, bool skipNonexistentTargets)
             {
                 return Task<BuildResult[]>.FromResult(_buildResultsToReturn);
             }
@@ -1232,7 +1226,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             /// <summary>
             /// Mock of the Block on target in progress.
             /// </summary>
-            public Task BlockOnTargetInProgress(int blockingRequestId, string blockingTarget)
+            public Task BlockOnTargetInProgress(int blockingRequestId, string blockingTarget, BuildResult partialBuildResult)
             {
                 throw new NotImplementedException();
             }
@@ -1280,7 +1274,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
             /// <summary>
             /// Not Implemented
             /// </summary>
-            private void MockIRequestBuilderCallback_OnBuildRequestBlocked(BuildRequestEntry sourceEntry, int blockingGlobalRequestId, string blockingTarget)
+            private void MockIRequestBuilderCallback_OnBuildRequestBlocked(BuildRequestEntry sourceEntry, int blockingGlobalRequestId, string blockingTarget, IBuildResults partialBuildResult = null)
             {
                 throw new NotImplementedException();
             }

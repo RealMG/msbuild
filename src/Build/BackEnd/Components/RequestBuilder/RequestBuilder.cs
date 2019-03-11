@@ -1,12 +1,9 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>The build request builder component.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -18,6 +15,7 @@ using System.Threading.Tasks;
 using System.Globalization;
 using Microsoft.Build.BackEnd;
 using Microsoft.Build.BackEnd.Logging;
+using Microsoft.Build.BackEnd.SdkResolution;
 using Microsoft.Build.Shared;
 using Microsoft.Build.Construction;
 using Microsoft.Build.Execution;
@@ -44,6 +42,11 @@ namespace Microsoft.Build.BackEnd
     /// </summary>
     internal class RequestBuilder : IRequestBuilder, IRequestBuilderCallback, IBuildComponent
     {
+        /// <summary>
+        /// The dedicated scheduler object.
+        /// </summary>
+        private static readonly TaskScheduler s_dedicatedScheduler = new DedicatedThreadsTaskScheduler();
+
         /// <summary>
         /// The event used to signal that this request should immediately terminate.
         /// </summary>
@@ -313,8 +316,9 @@ namespace Microsoft.Build.BackEnd
         /// <param name="toolsVersions">The tools version to use for each project.  Must be the same number as there are project files.</param>
         /// <param name="targets">The targets to be built.  Each project will be built with the same targets.</param>
         /// <param name="waitForResults">True to wait for the results </param>
+        /// <param name="skipNonexistentTargets">If set, skip targets that are not defined in the projects to be built.</param>
         /// <returns>True if the requests were satisfied, false if they were aborted.</returns>
-        public async Task<BuildResult[]> BuildProjects(string[] projectFiles, PropertyDictionary<ProjectPropertyInstance>[] properties, string[] toolsVersions, string[] targets, bool waitForResults)
+        public async Task<BuildResult[]> BuildProjects(string[] projectFiles, PropertyDictionary<ProjectPropertyInstance>[] properties, string[] toolsVersions, string[] targets, bool waitForResults, bool skipNonexistentTargets = false)
         {
             VerifyIsNotZombie();
             ErrorUtilities.VerifyThrowArgumentNull(projectFiles, "projectFiles");
@@ -349,9 +353,10 @@ namespace Microsoft.Build.BackEnd
                 // Otherwise let the BuildRequestConfiguration figure out what tools version will be used
                 BuildRequestData data = new BuildRequestData(projectFiles[i], properties[i].ToDictionary(), explicitToolsVersion, targets, null);
 
-                BuildRequestConfiguration config = new BuildRequestConfiguration(data, _componentHost.BuildParameters.DefaultToolsVersion, _componentHost.BuildParameters.GetToolset);
+                BuildRequestConfiguration config = new BuildRequestConfiguration(data, _componentHost.BuildParameters.DefaultToolsVersion);
 
-                requests[i] = new FullyQualifiedBuildRequest(config, targets, waitForResults);
+                requests[i] = new FullyQualifiedBuildRequest(config, targets, waitForResults,
+                    flags: skipNonexistentTargets ? BuildRequestDataFlags.SkipNonexistentTargets : BuildRequestDataFlags.None);
             }
 
             // Send the requests off
@@ -368,14 +373,15 @@ namespace Microsoft.Build.BackEnd
         /// </summary>
         /// <param name="blockingGlobalRequestId">The id of the request on which we are blocked.</param>
         /// <param name="blockingTarget">The target on which we are blocked.</param>
-        public async Task BlockOnTargetInProgress(int blockingGlobalRequestId, string blockingTarget)
+        /// <param name="partialBuildResult">A BuildResult with results from an incomplete build request.</param>
+        public async Task BlockOnTargetInProgress(int blockingGlobalRequestId, string blockingTarget, BuildResult partialBuildResult = null)
         {
             VerifyIsNotZombie();
             SaveOperatingEnvironment();
 
             _blockType = BlockType.BlockedOnTargetInProgress;
 
-            RaiseOnBlockedRequest(blockingGlobalRequestId, blockingTarget);
+            RaiseOnBlockedRequest(blockingGlobalRequestId, blockingTarget, partialBuildResult);
 
             WaitHandle[] handles = new WaitHandle[] { _terminateEvent, _continueEvent };
 
@@ -625,8 +631,8 @@ namespace Microsoft.Build.BackEnd
                             return this.RequestThreadProc(setThreadParameters: true);
                         },
                         _cancellationTokenSource.Token,
-                        TaskCreationOptions.LongRunning,
-                        TaskScheduler.Default).Unwrap();
+                        TaskCreationOptions.None,
+                        s_dedicatedScheduler).Unwrap();
                 }
             }
         }
@@ -636,13 +642,9 @@ namespace Microsoft.Build.BackEnd
         /// </summary>
         private void SetCommonWorkerThreadParameters()
         {
-#if FEATURE_CULTUREINFO_SETTERS
             CultureInfo.CurrentCulture = _componentHost.BuildParameters.Culture;
             CultureInfo.CurrentUICulture = _componentHost.BuildParameters.UICulture;
-#else
-            Thread.CurrentThread.CurrentCulture = _componentHost.BuildParameters.Culture;
-            Thread.CurrentThread.CurrentUICulture = _componentHost.BuildParameters.UICulture;
-#endif
+
 #if FEATURE_THREAD_PRIORITY
             Thread.CurrentThread.Priority = _componentHost.BuildParameters.BuildThreadPriority;
 #endif
@@ -658,8 +660,10 @@ namespace Microsoft.Build.BackEnd
                 threadName = "RequestBuilder STA thread";
             }
 #endif
-
-            Thread.CurrentThread.Name = threadName;
+            if (string.IsNullOrEmpty(Thread.CurrentThread.Name))
+            {
+                Thread.CurrentThread.Name = threadName;
+            }
         }
 
         /// <summary>
@@ -905,13 +909,8 @@ namespace Microsoft.Build.BackEnd
 
                     handle = await handles.ToTask();
 
-#if FEATURE_CULTUREINFO_SETTERS
                     CultureInfo.CurrentCulture = savedCulture;
                     CultureInfo.CurrentUICulture = savedUICulture;
-#else
-                    Thread.CurrentThread.CurrentCulture = savedCulture;
-                    Thread.CurrentThread.CurrentUICulture = savedUICulture;
-#endif
                 }
                 else
                 {
@@ -1019,13 +1018,13 @@ namespace Microsoft.Build.BackEnd
         /// <summary>
         /// Invokes the OnBlockedRequest event
         /// </summary>
-        private void RaiseOnBlockedRequest(int blockingGlobalRequestId, string blockingTarget)
+        private void RaiseOnBlockedRequest(int blockingGlobalRequestId, string blockingTarget, BuildResult partialBuildResult = null)
         {
             BuildRequestBlockedDelegate blockedRequestDelegate = OnBuildRequestBlocked;
 
             if (null != blockedRequestDelegate)
             {
-                blockedRequestDelegate(_requestEntry, blockingGlobalRequestId, blockingTarget);
+                blockedRequestDelegate(_requestEntry, blockingGlobalRequestId, blockingTarget, partialBuildResult);
             }
         }
 
@@ -1085,9 +1084,7 @@ namespace Microsoft.Build.BackEnd
             //
             ConfigureWarningsAsErrorsAndMessages();
 
-            // See comment on ProjectItemInstance.Initialize for full details
-            // We have been asked to build with a tools verison that we don't know about
-            // so we'll report that we're building as if the project had been marked with a known toolsversion instead
+            // See comment on Microsoft.Build.Internal.Utilities.GenerateToolsVersionToUse
             _requestEntry.RequestConfiguration.RetrieveFromCache();
             if (_requestEntry.RequestConfiguration.Project.UsingDifferentToolsVersionFromProjectFile)
             {
@@ -1144,10 +1141,9 @@ namespace Microsoft.Build.BackEnd
                 }
                 catch (DirectoryNotFoundException)
                 {
-#if FEATURE_ENVIRONMENT_SYSTEMDIRECTORY
                     // Somehow the startup directory vanished. This can happen if build was started from a USB Key and it was removed.
-                    NativeMethodsShared.SetCurrentDirectory(Environment.SystemDirectory);
-#endif
+                    NativeMethodsShared.SetCurrentDirectory(
+                        BuildEnvironmentHelper.Instance.CurrentMSBuildToolsDirectory);
                 }
             }
 
@@ -1160,7 +1156,34 @@ namespace Microsoft.Build.BackEnd
 
             string toolsVersionOverride = _requestEntry.RequestConfiguration.ExplicitToolsVersionSpecified ? _requestEntry.RequestConfiguration.ToolsVersion : null;
 
-            return new ProjectInstance(_requestEntry.RequestConfiguration.ProjectFullPath, globalProperties, toolsVersionOverride, _componentHost.BuildParameters, _nodeLoggingContext.LoggingService, _requestEntry.Request.BuildEventContext);
+            // Get the hosted ISdkResolverService.  This returns either the MainNodeSdkResolverService or the OutOfProcNodeSdkResolverService depending on who created the current RequestBuilder
+            ISdkResolverService sdkResolverService = _componentHost.GetComponent(BuildComponentType.SdkResolverService) as ISdkResolverService;
+
+            // Use different project load settings if the build request indicates to do so
+            ProjectLoadSettings projectLoadSettings = _componentHost.BuildParameters.ProjectLoadSettings;
+
+            if (_requestEntry.Request.BuildRequestDataFlags.HasFlag(BuildRequestDataFlags.IgnoreMissingEmptyAndInvalidImports))
+            {
+                projectLoadSettings |= ProjectLoadSettings.IgnoreMissingImports | ProjectLoadSettings.IgnoreInvalidImports | ProjectLoadSettings.IgnoreEmptyImports;
+            }
+
+            return new ProjectInstance(
+                _requestEntry.RequestConfiguration.ProjectFullPath,
+                globalProperties,
+                toolsVersionOverride,
+                _componentHost.BuildParameters,
+                _nodeLoggingContext.LoggingService,
+                new BuildEventContext(
+                    _requestEntry.Request.SubmissionId,
+                    _nodeLoggingContext.BuildEventContext.NodeId,
+                    BuildEventContext.InvalidEvaluationId,
+                    BuildEventContext.InvalidProjectInstanceId,
+                    BuildEventContext.InvalidProjectContextId,
+                    BuildEventContext.InvalidTargetId,
+                    BuildEventContext.InvalidTaskId),
+                sdkResolverService,
+                _requestEntry.Request.SubmissionId,
+                projectLoadSettings);
         }
 
         /// <summary>
@@ -1277,7 +1300,7 @@ namespace Microsoft.Build.BackEnd
                 {
                     // If <MSBuildTreatWarningsAsErrors was specified then an empty ISet<string> signals the IEventSourceSink to treat all warnings as errors
                     //
-                    loggingService.AddWarningsAsErrors(buildEventContext.ProjectInstanceId, new HashSet<string>());
+                    loggingService.AddWarningsAsErrors(buildEventContext, new HashSet<string>());
                 }
                 else
                 {
@@ -1285,7 +1308,7 @@ namespace Microsoft.Build.BackEnd
 
                     if (warningsAsErrors?.Count > 0)
                     {
-                        loggingService.AddWarningsAsErrors(buildEventContext.ProjectInstanceId, warningsAsErrors);
+                        loggingService.AddWarningsAsErrors(buildEventContext, warningsAsErrors);
                     }
                 }
 
@@ -1293,7 +1316,7 @@ namespace Microsoft.Build.BackEnd
 
                 if (warningsAsMessages?.Count > 0)
                 {
-                    loggingService.AddWarningsAsMessages(buildEventContext.ProjectInstanceId, warningsAsMessages);
+                    loggingService.AddWarningsAsMessages(buildEventContext, warningsAsMessages);
                 }
             }
         }
@@ -1306,6 +1329,58 @@ namespace Microsoft.Build.BackEnd
             }
             
             return new HashSet<string>(ExpressionShredder.SplitSemiColonSeparatedList(warnings), StringComparer.OrdinalIgnoreCase);
+        }
+
+        private sealed class DedicatedThreadsTaskScheduler : TaskScheduler
+        {
+            private readonly BlockingCollection<Task> _tasks = new BlockingCollection<Task>();
+            private int _availableThreads = 0;
+
+            protected override void QueueTask(Task task)
+            {
+                RequestThread();
+                _tasks.Add(task);
+            }
+
+            protected override bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued) => false;
+
+            protected override IEnumerable<Task> GetScheduledTasks() => _tasks;
+
+            private void RequestThread()
+            {
+                // Decrement available thread count; don't drop below zero
+                // Prior value is stored in count
+                var count = Volatile.Read(ref _availableThreads);
+                while (count > 0)
+                {
+                    var prev = Interlocked.CompareExchange(ref _availableThreads, count - 1, count);
+                    if (prev == count)
+                    {
+                        break;
+                    }
+                    count = prev;
+                }
+
+                if (count == 0)
+                {
+                    // No threads were available for request
+                    InjectThread();
+                }
+            }
+
+            private void InjectThread()
+            {
+                var thread = new Thread(() =>
+                {
+                    foreach (Task t in _tasks.GetConsumingEnumerable())
+                    {
+                        TryExecuteTask(t);
+                        Interlocked.Increment(ref _availableThreads);
+                    }
+                });
+                thread.IsBackground = true;
+                thread.Start();
+            }
         }
     }
 }

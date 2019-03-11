@@ -1,14 +1,8 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Class describing what is blocking a build request from continuing.</summary>
-//-----------------------------------------------------------------------
 
-using System;
-using System.Collections.Generic;
-using System.Text;
 using System.Diagnostics;
+using Microsoft.Build.Execution;
 
 namespace Microsoft.Build.BackEnd
 {
@@ -40,7 +34,7 @@ namespace Microsoft.Build.BackEnd
     ///    another request.
     /// 2) The request may be blocked because it has child requests which need to be satisfied to proceed.
     /// </summary>
-    internal class BuildRequestBlocker : INodePacketTranslatable, INodePacket
+    internal class BuildRequestBlocker : INodePacket
     {
         /// <summary>
         /// The yield action, if any.
@@ -67,6 +61,8 @@ namespace Microsoft.Build.BackEnd
         /// </summary>
         private string _blockingTarget;
 
+        private BuildResult _partialBuildResult;
+
         /// <summary>
         /// The requests which need to be built to unblock the request, if any.
         /// </summary>
@@ -75,7 +71,7 @@ namespace Microsoft.Build.BackEnd
         /// <summary>
         /// Constructor for deserialization.
         /// </summary>
-        internal BuildRequestBlocker(INodePacketTranslator translator)
+        internal BuildRequestBlocker(ITranslator translator)
         {
             Translate(translator);
         }
@@ -130,6 +126,12 @@ namespace Microsoft.Build.BackEnd
             _blockingGlobalRequestId = BuildRequest.InvalidGlobalRequestId;
             _targetsInProgress = targetsInProgress;
             _yieldAction = YieldAction.None;
+        }
+
+        public BuildRequestBlocker(int requestGlobalRequestId, string[] targetsInProgress, int unsubmittedRequestBlockingGlobalRequestId, string unsubmittedRequestBlockingTarget, BuildResult partialBuildResult)
+        : this(requestGlobalRequestId, targetsInProgress, unsubmittedRequestBlockingGlobalRequestId, unsubmittedRequestBlockingTarget)
+        {
+            _partialBuildResult = partialBuildResult;
         }
 
         /// <summary>
@@ -214,12 +216,14 @@ namespace Microsoft.Build.BackEnd
             }
         }
 
+        public BuildResult PartialBuildResult => _partialBuildResult;
+
         #region INodePacketTranslatable Members
 
         /// <summary>
         /// Serialization method.
         /// </summary>
-        public void Translate(INodePacketTranslator translator)
+        public void Translate(ITranslator translator)
         {
             translator.Translate(ref _blockedGlobalRequestId);
             translator.Translate(ref _targetsInProgress);
@@ -227,6 +231,7 @@ namespace Microsoft.Build.BackEnd
             translator.Translate(ref _blockingTarget);
             translator.TranslateEnum(ref _yieldAction, (int)_yieldAction);
             translator.TranslateArray(ref _buildRequests);
+            translator.Translate(ref _partialBuildResult, packetTranslator => BuildResult.FactoryForDeserialization(packetTranslator));
         }
 
         #endregion
@@ -234,7 +239,7 @@ namespace Microsoft.Build.BackEnd
         /// <summary>
         /// Factory for serialization.
         /// </summary>
-        static internal INodePacket FactoryForDeserialization(INodePacketTranslator translator)
+        internal static INodePacket FactoryForDeserialization(ITranslator translator)
         {
             return new BuildRequestBlocker(translator);
         }

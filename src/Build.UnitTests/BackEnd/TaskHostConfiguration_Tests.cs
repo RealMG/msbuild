@@ -1,9 +1,5 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Unit Tests for TaskHostConfiguration packet.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections;
@@ -294,7 +290,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
                 @"c:\MyTasks\MyTask.dll",
                 null);
 
-            ((INodePacketTranslatable)config).Translate(TranslationHelpers.GetWriteTranslator());
+            ((ITranslatable)config).Translate(TranslationHelpers.GetWriteTranslator());
             INodePacket packet = TaskHostConfiguration.FactoryForDeserialization(TranslationHelpers.GetReadTranslator());
 
             TaskHostConfiguration deserializedConfig = packet as TaskHostConfiguration;
@@ -334,7 +330,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
                 @"c:\MyTasks\MyTask.dll",
                 new Dictionary<string, object>());
 
-            ((INodePacketTranslatable)config).Translate(TranslationHelpers.GetWriteTranslator());
+            ((ITranslatable)config).Translate(TranslationHelpers.GetWriteTranslator());
             INodePacket packet = TaskHostConfiguration.FactoryForDeserialization(TranslationHelpers.GetReadTranslator());
 
             TaskHostConfiguration deserializedConfig = packet as TaskHostConfiguration;
@@ -347,7 +343,6 @@ namespace Microsoft.Build.UnitTests.BackEnd
             Assert.Equal(config.TaskParameters.Count, deserializedConfig.TaskParameters.Count);
         }
 
-#if FEATURE_BINARY_SERIALIZATION
         /// <summary>
         /// Test serialization / deserialization when the parameter dictionary contains just value types. 
         /// </summary>
@@ -361,13 +356,8 @@ namespace Microsoft.Build.UnitTests.BackEnd
                 1,
                 Directory.GetCurrentDirectory(),
                 null,
-#if FEATURE_THREAD_CULTURE
                 Thread.CurrentThread.CurrentCulture,
                 Thread.CurrentThread.CurrentUICulture,
-#else
-                CultureInfo.CurrentCulture,
-                CultureInfo.CurrentCulture,
-#endif
 #if FEATURE_APPDOMAIN
                 null,
 #endif
@@ -376,14 +366,10 @@ namespace Microsoft.Build.UnitTests.BackEnd
                 @"c:\my project\myproj.proj",
                 _continueOnErrorDefault,
                 "TaskName",
-#if FEATURE_ASSEMBLY_LOADFROM
                 @"c:\MyTasks\MyTask.dll",
-#else
-                new AssemblyName("MyTask"),
-#endif
                 parameters);
 
-            ((INodePacketTranslatable)config).Translate(TranslationHelpers.GetWriteTranslator());
+            ((ITranslatable)config).Translate(TranslationHelpers.GetWriteTranslator());
             INodePacket packet = TaskHostConfiguration.FactoryForDeserialization(TranslationHelpers.GetReadTranslator());
 
             TaskHostConfiguration deserializedConfig = packet as TaskHostConfiguration;
@@ -397,7 +383,6 @@ namespace Microsoft.Build.UnitTests.BackEnd
             Assert.Equal(config.TaskParameters["Text"].WrappedParameter, deserializedConfig.TaskParameters["Text"].WrappedParameter);
             Assert.Equal(config.TaskParameters["BoolValue"].WrappedParameter, deserializedConfig.TaskParameters["BoolValue"].WrappedParameter);
         }
-#endif
 
         /// <summary>
         /// Test serialization / deserialization when the parameter dictionary contains an ITaskItem. 
@@ -429,7 +414,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
                 @"c:\MyTasks\MyTask.dll",
                 parameters);
 
-            ((INodePacketTranslatable)config).Translate(TranslationHelpers.GetWriteTranslator());
+            ((ITranslatable)config).Translate(TranslationHelpers.GetWriteTranslator());
             INodePacket packet = TaskHostConfiguration.FactoryForDeserialization(TranslationHelpers.GetReadTranslator());
 
             TaskHostConfiguration deserializedConfig = packet as TaskHostConfiguration;
@@ -473,7 +458,7 @@ namespace Microsoft.Build.UnitTests.BackEnd
                 @"c:\MyTasks\MyTask.dll",
                 parameters);
 
-            ((INodePacketTranslatable)config).Translate(TranslationHelpers.GetWriteTranslator());
+            ((ITranslatable)config).Translate(TranslationHelpers.GetWriteTranslator());
             INodePacket packet = TaskHostConfiguration.FactoryForDeserialization(TranslationHelpers.GetReadTranslator());
 
             TaskHostConfiguration deserializedConfig = packet as TaskHostConfiguration;

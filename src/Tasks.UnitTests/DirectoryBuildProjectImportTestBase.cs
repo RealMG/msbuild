@@ -65,7 +65,7 @@ namespace Microsoft.Build.UnitTests
         /// <summary>
         /// Ensures that if a directory build project does not exist, it won't be imported and the project can be successfully evaluated.
         /// </summary>
-        [Fact]
+        [Fact(Skip = "Tests always have Directory.Build files in the output directory to prevent them from picking up the Directory.Build files in the root of the repo")]
         public void DoesNotImportDirectoryBuildProjectIfNotExist()
         {
             // ---------------------
@@ -89,13 +89,13 @@ namespace Microsoft.Build.UnitTests
         /// <summary>
         /// Ensures that when the user disables the import by setting the corresponding property to "false", then all of the functionality is disabled.
         /// </summary>
-        [Fact]
+        [Fact(Skip = "Tests always have Directory.Build files in the output directory to prevent them from picking up the Directory.Build files in the root of the repo")]
         public void DoesNotImportDirectoryBuildProjectWhenDisabled()
         {
             // ---------------------
             // Directory.Build.props
             // ---------------------
-            string directoryBuildProjectFilePath = ObjectModelHelpers.CreateFileInTempProjectDirectory(DirectoryBuildProjectFile, BasicDirectoryBuildProjectContents);
+            ObjectModelHelpers.CreateFileInTempProjectDirectory(DirectoryBuildProjectFile, BasicDirectoryBuildProjectContents);
 
             // ---------------------
             // src\Foo\Foo.csproj
@@ -118,7 +118,6 @@ namespace Microsoft.Build.UnitTests
             Assert.Equal(String.Empty, project.GetPropertyValue(DirectoryBuildProjectBasePathPropertyName), StringComparer.OrdinalIgnoreCase);
             Assert.Equal(String.Empty, project.GetPropertyValue(DirectoryBuildProjectFilePropertyName), StringComparer.OrdinalIgnoreCase);
             Assert.Equal(String.Empty, project.GetPropertyValue(DirectoryBuildProjectPathPropertyName));
-            Assert.DoesNotContain(directoryBuildProjectFilePath, project.GetPropertyValue("MSBuildAllProjects"));
         }
 
         /// <summary>
@@ -147,7 +146,6 @@ namespace Microsoft.Build.UnitTests
             Assert.Equal("true", project.GetPropertyValue(ImportDirectoryBuildProjectPropertyName), StringComparer.OrdinalIgnoreCase);
             Assert.Equal("true", project.GetPropertyValue("WasDirectoryBuildProjectImported"), StringComparer.OrdinalIgnoreCase);
             Assert.Equal(customFilePath, project.GetPropertyValue(DirectoryBuildProjectPathPropertyName));
-            Assert.Contains(customFilePath, project.GetPropertyValue("MSBuildAllProjects"));
         }
 
         /// <summary>
@@ -156,7 +154,7 @@ namespace Microsoft.Build.UnitTests
         [Fact]
         public void ImportsDirectoryBuildProjectIfExists()
         {
-            string directoryBuildProjectFilePath = ObjectModelHelpers.CreateFileInTempProjectDirectory(DirectoryBuildProjectFile, BasicDirectoryBuildProjectContents);
+            ObjectModelHelpers.CreateFileInTempProjectDirectory(DirectoryBuildProjectFile, BasicDirectoryBuildProjectContents);
 
             // ---------------------
             // src\Foo\Foo.csproj
@@ -175,7 +173,6 @@ namespace Microsoft.Build.UnitTests
             Assert.Equal(ObjectModelHelpers.TempProjectDir, project.GetPropertyValue(DirectoryBuildProjectBasePathPropertyName), StringComparer.OrdinalIgnoreCase);
             Assert.Equal(DirectoryBuildProjectFile, project.GetPropertyValue(DirectoryBuildProjectFilePropertyName), StringComparer.OrdinalIgnoreCase);
             Assert.Equal(Path.Combine(ObjectModelHelpers.TempProjectDir, DirectoryBuildProjectFile), project.GetPropertyValue(DirectoryBuildProjectPathPropertyName));
-            Assert.Contains(directoryBuildProjectFilePath, project.GetPropertyValue("MSBuildAllProjects"));
         }
     }
 }

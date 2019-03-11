@@ -1,18 +1,11 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary> Exception to be thrown whenever an assumption we have made 
-//           in the code turns out to be false.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-#if FEATURE_BINARY_SERIALIZATION
 using System.Runtime.Serialization;
-#endif
 
 namespace Microsoft.Build.Shared
 {
@@ -27,9 +20,7 @@ namespace Microsoft.Build.Shared
     /// !~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~!~
     ///     
     /// </summary>
-#if FEATURE_BINARY_SERIALIZATION
     [Serializable]
-#endif
     internal sealed class InternalErrorException : Exception
     {
         /// <summary>
@@ -69,7 +60,6 @@ namespace Microsoft.Build.Shared
             ConsiderDebuggerLaunch(message, innerException);
         }
 
-#if FEATURE_BINARY_SERIALIZATION
         #region Serialization (update when adding new class members)
 
         /// <summary>
@@ -84,7 +74,6 @@ namespace Microsoft.Build.Shared
 
         // Base implementation of GetObjectData() is sufficient; we have no fields
         #endregion
-#endif
 
         #region ConsiderDebuggerLaunch
         /// <summary>
@@ -147,52 +136,6 @@ namespace Microsoft.Build.Shared
         }
         #endregion
 
-        private static bool RunningTests()
-        {
-            // Copied logic from BuildEnvironmentHelper. Removed reference for single use due
-            // to additional dependencies. Update both if needed.
-            string[] testRunners =
-            {
-                "XUNIT", "NUNIT", "MSTEST", "VSTEST", "TASKRUNNER", "VSTESTHOST", "QTAGENT32",
-                "CONCURRENT", "RESHARPER", "MDHOST", "TE.PROCESSHOST"
-            };
-
-            string[] testAssemblies =
-            {
-                "Microsoft.Build.Tasks.UnitTests", "Microsoft.Build.Engine.UnitTests",
-                "Microsoft.Build.Utilities.UnitTests", "Microsoft.Build.CommandLine.UnitTests",
-                "Microsoft.Build.Engine.OM.UnitTests", "Microsoft.Build.Framework.UnitTests"
-            };
-
-#if FEATURE_GET_COMMANDLINE
-            var processNameCommandLine = Environment.GetCommandLineArgs()[0];
-#else
-            string processNameCommandLine = null;
-#endif
-            var processNameCurrentProcess = Process.GetCurrentProcess().MainModule.FileName;
-
-            // First check if we're running in a known test runner.
-            if (IsProcessInList(processNameCommandLine, testRunners) ||
-                IsProcessInList(processNameCurrentProcess, testRunners))
-            {
-#if FEATURE_APPDOMAIN
-                // If we are, then ensure we're running MSBuild's tests by seeing if any of our assemblies are loaded.
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    if (testAssemblies.Any(item => item.Equals(assembly.GetName().Name, StringComparison.InvariantCultureIgnoreCase)))
-                        return true;
-                }
-#else
-                return true;
-#endif
-            }
-
-            return false;
-        }
-
-        private static bool IsProcessInList(string processName, string[] processList)
-        {
-            return processList.Any(s => Path.GetFileNameWithoutExtension(processName)?.IndexOf(s, StringComparison.OrdinalIgnoreCase) >= 0);
-        }
+        private static bool RunningTests() => BuildEnvironmentHelper.Instance.RunningTests;
     }
 }

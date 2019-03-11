@@ -1,11 +1,14 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.Build.Construction;
+using Microsoft.Build.Internal;
 using Microsoft.Build.Shared;
+using Microsoft.Build.Shared.FileSystem;
 
 namespace Microsoft.Build.Evaluation
 {
@@ -15,8 +18,8 @@ namespace Microsoft.Build.Evaluation
         {
             private readonly string _itemType;
             private readonly ImmutableDictionary<string, LazyItemList> _referencedItemLists;
-            private readonly LazyItemEvaluator<P, I, M, D> _lazyEvaluator;
 
+            protected readonly LazyItemEvaluator<P, I, M, D> _lazyEvaluator;
             protected readonly ProjectItemElement _itemElement;
             protected readonly ItemSpec<P, I> _itemSpec;
             protected readonly EvaluatorData _evaluatorData;
@@ -39,40 +42,43 @@ namespace Microsoft.Build.Evaluation
 
                 _evaluatorData = new EvaluatorData(_lazyEvaluator._outerEvaluatorData, itemType => GetReferencedItems(itemType, ImmutableHashSet<string>.Empty));
                 _itemFactory = new ItemFactoryWrapper(_itemElement, _lazyEvaluator._itemFactory);
-                _expander = new Expander<P, I>(_evaluatorData, _evaluatorData);
+                _expander = new Expander<P, I>(_evaluatorData, _evaluatorData, _lazyEvaluator.FileSystem);
 
                 _itemSpec.Expander = _expander;
             }
 
+            protected EngineFileUtilities EngineFileUtilities => _lazyEvaluator.EngineFileUtilities;
+
             public virtual void Apply(ImmutableList<ItemData>.Builder listBuilder, ImmutableHashSet<string> globsToIgnore)
             {
-                var items = SelectItems(listBuilder, globsToIgnore).ToList();
-                MutateItems(items);
-                SaveItems(items, listBuilder);
+                using (_lazyEvaluator._evaluationProfiler.TrackElement(_itemElement))
+                {
+                    var items = SelectItems(listBuilder, globsToIgnore);
+                    MutateItems(items);
+                    SaveItems(items, listBuilder);
+                }
             }
 
             /// <summary>
             /// Produce the items to operate on. For example, create new ones or select existing ones
             /// </summary>
-            protected virtual ICollection<I> SelectItems(ImmutableList<ItemData>.Builder listBuilder, ImmutableHashSet<string> globsToIgnore)
+            protected virtual ImmutableList<I> SelectItems(ImmutableList<ItemData>.Builder listBuilder, ImmutableHashSet<string> globsToIgnore)
             {
-                return listBuilder.Select(itemData => itemData.Item).ToList();
+                return listBuilder.Select(itemData => itemData.Item)
+                                  .ToImmutableList();
             }
 
             // todo Refactoring: MutateItems should clone each item before mutation. See https://github.com/Microsoft/msbuild/issues/2328
-            protected virtual void MutateItems(ICollection<I> items) { }
+            protected virtual void MutateItems(ImmutableList<I> items) { }
 
-            protected virtual void SaveItems(ICollection<I> items, ImmutableList<ItemData>.Builder listBuilder) { }
+            protected virtual void SaveItems(ImmutableList<I> items, ImmutableList<ItemData>.Builder listBuilder) { }
 
             private IList<I> GetReferencedItems(string itemType, ImmutableHashSet<string> globsToIgnore)
             {
                 LazyItemList itemList;
                 if (_referencedItemLists.TryGetValue(itemType, out itemList))
                 {
-                    return itemList.GetItems(globsToIgnore)
-                        .Where(ItemData => ItemData.ConditionResult)
-                        .Select(itemData => itemData.Item)
-                        .ToList();
+                    return itemList.GetMatchedItems(globsToIgnore);
                 }
                 else
                 {
@@ -80,9 +86,9 @@ namespace Microsoft.Build.Evaluation
                 }
             }
 
-            protected void DecorateItemsWithMetadata(ICollection<I> items, ImmutableList<ProjectMetadataElement> metadata)
+            protected void DecorateItemsWithMetadata(ImmutableList<I> items, ImmutableList<ProjectMetadataElement> metadata)
             {
-                if (metadata.Any())
+                if (metadata.Count > 0)
                 {
                     ////////////////////////////////////////////////////
                     // UNDONE: Implement batching here.
@@ -156,13 +162,6 @@ namespace Microsoft.Build.Evaluation
 
                             foreach (var metadataElement in metadata)
                             {
-#if FEATURE_MSBUILD_DEBUGGER
-                                //if (DebuggerManager.DebuggingEnabled)
-                                //{
-                                //    DebuggerManager.PulseState(metadataElementElement.Location, _itemPassLocals);
-                                //}
-#endif
-
                                 if (!EvaluateCondition(metadataElement.Condition, metadataElement, metadataExpansionOptions, ParserOptions.AllowAll, _expander, _lazyEvaluator))
                                 {
                                     continue;
@@ -189,23 +188,24 @@ namespace Microsoft.Build.Evaluation
                         _expander.Metadata = metadataTable;
 
                         // Also keep a list of everything so we can get the predecessor objects correct.
-                        List<Pair<ProjectMetadataElement, string>> metadataList = new List<Pair<ProjectMetadataElement, string>>();
+                        List<Pair<ProjectMetadataElement, string>> metadataList = new List<Pair<ProjectMetadataElement, string>>(metadata.Count);
 
                         foreach (var metadataElement in metadata)
                         {
                             // Because of the checking above, it should be safe to expand metadata in conditions; the condition
                             // will be true for either all the items or none
-                            if (!EvaluateCondition(metadataElement.Condition, metadataElement, metadataExpansionOptions, ParserOptions.AllowAll, _expander, _lazyEvaluator))
+                            if (
+                                !EvaluateCondition(
+                                    metadataElement.Condition,
+                                    metadataElement,
+                                    metadataExpansionOptions,
+                                    ParserOptions.AllowAll,
+                                    _expander,
+                                    _lazyEvaluator
+                                    ))
                             {
                                 continue;
                             }
-
-#if FEATURE_MSBUILD_DEBUGGER
-                            //if (DebuggerManager.DebuggingEnabled)
-                            //{
-                            //    DebuggerManager.PulseState(metadataElementElement.Location, _itemPassLocals);
-                            //}
-#endif
 
                             string evaluatedValue = _expander.ExpandIntoStringLeaveEscaped(metadataElement.Value, metadataExpansionOptions, metadataElement.Location);
                             evaluatedValue = FileUtilities.MaybeAdjustFilePath(evaluatedValue, metadataElement.ContainingProject.DirectoryPath);
@@ -227,14 +227,6 @@ namespace Microsoft.Build.Evaluation
                         _expander.Metadata = null;
                     }
                 }
-            }
-
-            /// <summary>
-            /// Collects all the items of this item element's type that match the items (represented as operations)
-            /// </summary>
-            protected IEnumerable<I> SelectItemsMatchingItemSpec(ImmutableList<ItemData>.Builder listBuilder, IElementLocation elementLocation)
-            {
-                return _itemSpec.FilterItems(listBuilder.Select(itemData => itemData.Item));
             }
         }
     }

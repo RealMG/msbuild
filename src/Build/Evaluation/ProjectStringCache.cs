@@ -1,16 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Holds references to strings contained in ProjectRootElement in
-// order to save memory when duplicate files are loaded.</summary>
-// <remarks>
-// Most of the code comes from XmlNameTable implementation:
-// ndp\fx\src\Xml\System\Xml\NameTable.cs
-// We are adding functionality to remove cache entries when xml documents
-// are unloaded.
-// </remarks>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
@@ -39,7 +28,7 @@ namespace Microsoft.Build.Construction
         /// <summary>
         /// Store interned strings, and also a ref count, one per document using them.
         /// </summary>
-        private RetrievableEntryHashSet<StringCacheEntry> _strings = new RetrievableEntryHashSet<StringCacheEntry>(InitialSize, OrdinalKeyedComparer.Instance);
+        private RetrievableEntryHashSet<StringCacheEntry> _strings = new RetrievableEntryHashSet<StringCacheEntry>(InitialSize, StringComparer.Ordinal);
 
         /// <summary>
         /// Store all the strings a document is using, so their ref count can be decremented.

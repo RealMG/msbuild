@@ -1,9 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>A logging context for targets.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
@@ -42,13 +38,13 @@ namespace Microsoft.Build.BackEnd.Logging
         /// <summary>
         /// Creates a new target logging context from an existing project context and target.
         /// </summary>
-        internal TargetLoggingContext(ProjectLoggingContext projectLoggingContext, string projectFullPath, ProjectTargetInstance target, string parentTargetName)
+        internal TargetLoggingContext(ProjectLoggingContext projectLoggingContext, string projectFullPath, ProjectTargetInstance target, string parentTargetName, TargetBuiltReason buildReason)
             : base(projectLoggingContext)
         {
             _projectLoggingContext = projectLoggingContext;
             _target = target;
 
-            this.BuildEventContext = LoggingService.LogTargetStarted(projectLoggingContext.BuildEventContext, target.Name, projectFullPath, target.Location.File, parentTargetName);
+            this.BuildEventContext = LoggingService.LogTargetStarted(projectLoggingContext.BuildEventContext, target.Name, projectFullPath, target.Location.File, parentTargetName, buildReason);
             this.IsValid = true;
         }
 

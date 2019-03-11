@@ -58,11 +58,6 @@ namespace Microsoft.Build.Tasks
         /// <summary>
         /// Construct the exception.
         /// </summary>
-        /// <param name="message"></param>
-        /// <param name="fileName"></param>
-        /// <param name="line"></param>
-        /// <param name="column"></param>
-        /// <param name="inner"></param>
         public AppConfigException(string message, string fileName, int line, int column, System.Exception inner) : base(message, inner)
         {
             this.fileName = fileName;
@@ -70,13 +65,11 @@ namespace Microsoft.Build.Tasks
             this.column = column;
         }
 
-#if FEATURE_BINARY_SERIALIZATION
         /// <summary>
         /// Construct the exception.
         /// </summary>
         protected AppConfigException(SerializationInfo info, StreamingContext context) : base(info, context)
         {
         }
-#endif
     }
 }

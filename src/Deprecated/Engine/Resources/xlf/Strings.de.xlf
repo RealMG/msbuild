@@ -20,7 +20,6 @@
       </count-group>
     </header>
     <body>
-      <group id="ORCASENGINE/RESOURCES/STRINGS.RESX" datatype="resx" />
       <trans-unit id="AmbiguousTaskParameterError">
         <source>MSB4001: The "{0}" task has more than one parameter called "{1}".</source>
         <target state="translated">MSB4001: Die {0}-Aufgabe enthält mehrere Parameter mit dem Namen "{1}".</target>
@@ -376,7 +375,7 @@
       </trans-unit>
       <trans-unit id="CannotSetDefaultToolsVersionAfterLoadingProjects">
         <source>MSB4134: DefaultToolsVersion cannot be set after a project has been loaded into the Engine.</source>
-        <target state="translated">MSB4134: DefaultToolsVersion darf nicht festgelegt werden, nachdem ein Projekt in das Modul geladen wurde.</target>
+        <target state="translated">MSB4134: DefaultToolsVersion darf nicht festgelegt werden, nachdem ein Projekt in die Engine geladen wurde.</target>
         <note>{StrBegin="MSB4134: "}</note>
         <alt-trans match-quality="100%" tool="BlackBox/MSR MT">
           <target state-qualifier="tm-suggestion">MSB4134: DefaultToolsVersion darf nicht festgelegt werden, nachdem ein Projekt in das Modul geladen wurde.</target>
@@ -700,7 +699,7 @@
       </trans-unit>
       <trans-unit id="ErrorWarningMessageNotSupported">
         <source>The &lt;{0}&gt; tag is no longer supported as a child of the &lt;Project&gt; element. Place this tag within a target, and add the name of the target to the "InitialTargets" attribute of the &lt;Project&gt; element.</source>
-        <target state="translated">Die &lt;{0}&gt;-Kennung wird nicht mehr als untergeordnetes Element des &lt;Project&gt;-Elements unterstützt. Platzieren Sie diese Kennung in einem Ziel, und fügen Sie den Namen des Ziels dem InitialTargets-Attribut des &lt;Project&gt;-Elements hinzu.</target>
+        <target state="translated">Das &lt;{0}&gt;-Tag wird nicht mehr als untergeordnetes Element des &lt;Project&gt;-Elements unterstützt. Platzieren Sie dieses Tag in einem Ziel, und fügen Sie den Namen des Ziels dem InitialTargets-Attribut des &lt;Project&gt;-Elements hinzu.</target>
         <note />
         <alt-trans match-quality="100%" tool="BlackBox/MSR MT">
           <target state-qualifier="mt-suggestion">Das &lt;{0}&gt;-Tag nicht als untergeordnetes Element des &lt; Project &gt;-Elements unterstützt. Platzieren Sie dieses Tag in einem Ziel und fügen Sie den Namen des Ziels InitialTargets-Attribut des &lt; Project &gt;-Elements hinzu.</target>
@@ -994,9 +993,9 @@
       <trans-unit id="InvalidMessageImportance">
         <source>MSB4071: The value Importance="{0}" in the &lt;Message&gt; element is invalid. Valid values are: High, Normal and Low.</source>
         <target state="translated">MSB4071: Der Wert Importance={0} im &lt;Message&gt;-Element ist ungültig. Gültige Werte sind: High, Normal und Low.</target>
-        <note>{StrBegin="MSB4071: "}UE: This message is shown when a user specifies a value for the importance attribute of Message which is not valid.  
+        <note>{StrBegin="MSB4071: "}UE: This message is shown when a user specifies a value for the importance attribute of Message which is not valid.
     The importance enumeration is: High, Normal and Low.  Specifying any other importance will result in this message being shown
-    LOCALIZATION: "Importance" should not be localized.  
+    LOCALIZATION: "Importance" should not be localized.
                   "Message" should not be localized.
                   High should not be localized.
                   Normal should not be localized.
@@ -1198,7 +1197,7 @@
       </trans-unit>
       <trans-unit id="InternalLoggerExceptionOnlyThrownByEngine">
         <source>An InternalLoggerException can only be thrown by the MSBuild engine. The public constructors of this class cannot be used to create an instance of the exception.</source>
-        <target state="translated">Eine InternalLoggerException kann nur durch das MSBuild-Modul ausgelöst werden. Die öffentlichen Konstruktoren dieser Klasse können nicht verwendet werden, um eine Instanz der Ausnahme zu erstellen.</target>
+        <target state="translated">Eine InternalLoggerException kann nur durch die MSBuild-Engine ausgelöst werden. Die öffentlichen Konstruktoren dieser Klasse können nicht verwendet werden, um eine Instanz der Ausnahme zu erstellen.</target>
         <note>UE: This message is shown when a user tries to instantiate a special exception called InternalLoggerException through the OM --
     only the engine is allowed to create and throw this exception.
     LOCALIZATION: "InternalLoggerException" and "MSBuild" should not be localized.</note>
@@ -1273,7 +1272,7 @@
       </trans-unit>
       <trans-unit id="MSBuildVersionAttributeDeprecated">
         <source>MSB4031: The "MSBuildVersion" attribute is deprecated. If the project is authored in the MSBuild 2003 format, please remove the attribute from the &lt;Project&gt; tag. If the project has been authored in the old 1.0 or 1.2 format, please convert it to MSBuild 2003 format.</source>
-        <target state="translated">MSB4031: Das MSBuildVersion-Attribut ist veraltet. Wenn das Projekt im Format MSBuild 2003 erstellt wurde, löschen Sie das Attribut aus der &lt;Project&gt;-Kennung. Wenn das Projekt im alten Format 1.0 oder 1.2 erstellt wurde, konvertieren Sie es in das MSBuild 2003-Format.</target>
+        <target state="translated">MSB4031: Das MSBuildVersion-Attribut ist veraltet. Wenn das Projekt im Format MSBuild 2003 erstellt wurde, löschen Sie das Attribut aus dem &lt;Project&gt;-Tag. Wenn das Projekt im alten Format 1.0 oder 1.2 erstellt wurde, konvertieren Sie es in das MSBuild 2003-Format.</target>
         <note>{StrBegin="MSB4031: "}UE: This message is shown for projects that still contain the "MSBuildVersion" attribute in their &lt;Project&gt;
     tag. We no longer need this attribute because the project's XML namespace (i.e. the "xmlns" attribute) gives us all the
     version information we need.
@@ -1420,7 +1419,7 @@
       </trans-unit>
       <trans-unit id="ProjectInvalidUnloaded">
         <source>This project object has been unloaded from the MSBuild engine and is no longer valid.</source>
-        <target state="translated">Dieses Projektobjekt wurde aus dem MSBuild-Modul entladen und ist nicht mehr gültig.</target>
+        <target state="translated">Dieses Projektobjekt wurde aus der MSBuild-Engine entladen und ist nicht mehr gültig.</target>
         <note />
         <alt-trans match-quality="100%" tool="BlackBox/MSR MT">
           <target state-qualifier="tm-suggestion">Dieses Projektobjekt wurde aus dem MSBuild-Modul entladen und ist nicht mehr gültig.</target>
@@ -1964,7 +1963,7 @@
       </trans-unit>
       <trans-unit id="STARequired">
         <source>MSB4056: The MSBuild engine must be called on a single-threaded-apartment. Current threading model is "{0}". Proceeding, but some tasks may not function correctly.</source>
-        <target state="translated">MSB4056: Das MSBuild-Modul muss in einem Singlethread-Apartment aufgerufen werden. Das aktuelle Threadmodell ist {0}. Der Vorgang wird fortgesetzt, aber einige Aufgaben werden möglicherweise nicht ordnungsgemäß ausgeführt.</target>
+        <target state="translated">MSB4056: Die MSBuild-Engine muss in einem Singlethread-Apartment aufgerufen werden. Das aktuelle Threadmodell ist {0}. Der Vorgang wird fortgesetzt, aber einige Aufgaben werden möglicherweise nicht ordnungsgemäß ausgeführt.</target>
         <note>{StrBegin="MSB4056: "}</note>
         <alt-trans match-quality="100%" tool="BlackBox/MSR MT">
           <target state-qualifier="tm-suggestion">MSB4056: Das MSBuild-Modul muss in einem Singlethread-Apartment aufgerufen werden. Das aktuelle Threadmodell ist {0}. Der Vorgang wird fortgesetzt, aber einige Aufgaben werden möglicherweise nicht ordnungsgemäß ausgeführt.</target>

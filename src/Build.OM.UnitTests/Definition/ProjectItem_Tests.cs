@@ -1,9 +1,5 @@
 // Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Tests for ProjectItem</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
@@ -13,8 +9,11 @@ using System.Linq;
 using System.Xml;
 using Microsoft.Build.Construction;
 using Microsoft.Build.Engine.UnitTests;
+using Microsoft.Build.Engine.UnitTests.Globbing;
 using Microsoft.Build.Evaluation;
+using Microsoft.Build.Execution;
 using Microsoft.Build.Shared;
+using Shouldly;
 using InvalidProjectFileException = Microsoft.Build.Exceptions.InvalidProjectFileException;
 using Xunit;
 
@@ -55,7 +54,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
             Project project = new Project();
             ProjectItem item = project.AddItem("i", "i1")[0];
 
-            Assert.Equal(true, Object.ReferenceEquals(project, item.Project));
+            Assert.True(Object.ReferenceEquals(project, item.Project));
         }
 
         /// <summary>
@@ -78,7 +77,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
             Assert.Equal("i", item.ItemType);
             Assert.Equal("i1", item.EvaluatedInclude);
             Assert.Equal("i1", item.UnevaluatedInclude);
-            Assert.Equal(false, item.Metadata.GetEnumerator().MoveNext());
+            Assert.False(item.Metadata.GetEnumerator().MoveNext());
         }
 
         /// <summary>
@@ -144,8 +143,8 @@ namespace Microsoft.Build.UnitTests.OM.Definition
             ProjectMetadata idm0 = definition.GetMetadata("m0");
             ProjectMetadata idm1 = definition.GetMetadata("m1");
 
-            Assert.Equal(true, Object.ReferenceEquals(m0, idm0));
-            Assert.Equal(false, Object.ReferenceEquals(m1, idm1));
+            Assert.True(Object.ReferenceEquals(m0, idm0));
+            Assert.False(Object.ReferenceEquals(m1, idm1));
         }
 
         /// <summary>
@@ -186,7 +185,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
         {
             ProjectItem item = GetOneItemFromFragment(@"<i Include='i0'/>");
 
-            Assert.Equal(null, item.GetMetadata("m0"));
+            Assert.Null(item.GetMetadata("m0"));
         }
 
         /// <summary>
@@ -250,7 +249,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
         {
             ProjectItem item = GetOneItemFromFragment(@"<i Include='c:\foo\bar.baz'/>");
 
-            Assert.Equal(false, item.Metadata.GetEnumerator().MoveNext());
+            Assert.False(item.Metadata.GetEnumerator().MoveNext());
         }
 
         /// <summary>
@@ -414,7 +413,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
         {
             IList<ProjectItem> items = ObjectModelHelpers.GetItemsFromFragment("<i Include='a;b' Exclude='b;c'/>");
 
-            Assert.Equal(1, items.Count);
+            Assert.Single(items);
             Assert.Equal("a", items[0].EvaluatedInclude);
         }
 
@@ -559,88 +558,13 @@ namespace Microsoft.Build.UnitTests.OM.Definition
             TestIncludeExclude(projectContents, inputFiles, expectedInclude, includeString, excludeString, normalizeSlashes: false);
         }
 
+        public static IEnumerable<object[]> IncludesAndExcludesWithWildcardsTestData => GlobbingTestData.IncludesAndExcludesWithWildcardsTestData;
+
         [Theory]
-        [InlineData(ItemWithIncludeAndExclude,
-            "a.*",
-            "*.1",
-            new[] { "a.1", "a.2", "a.1" },
-            new[] { "a.2" })]
-        [InlineData(ItemWithIncludeAndExclude,
-            @"**\*.cs",
-            @"a\**",
-            new[] { "1.cs", @"a\2.cs", @"a\b\3.cs", @"a\b\c\4.cs" },
-            new[] { "1.cs" })]
-        [InlineData(ItemWithIncludeAndExclude,
-            @"**\*",
-            @"**\b\**",
-            new[] { "1.cs", @"a\2.cs", @"a\b\3.cs", @"a\b\c\4.cs" },
-            new[] { "1.cs", @"a\2.cs", "build.proj" })]
-        [InlineData(ItemWithIncludeAndExclude,
-            @"**\*",
-            @"**\b\**\*.cs",
-            new[] { "1.cs", @"a\2.cs", @"a\b\3.cs", @"a\b\c\4.cs", @"a\b\c\5.txt" },
-            new[] { "1.cs", @"a\2.cs", @"a\b\c\5.txt", "build.proj" })]
-        [InlineData(ItemWithIncludeAndExclude,
-            @"src\**\proj\**\*.cs",
-            @"src\**\proj\**\none\**\*",
-            new[]
-            {
-                "1.cs",
-                @"src\2.cs",
-                @"src\a\3.cs",
-                @"src\proj\4.cs",
-                @"src\proj\a\5.cs",
-                @"src\a\proj\6.cs",
-                @"src\a\proj\a\7.cs",
-                @"src\proj\none\8.cs",
-                @"src\proj\a\none\9.cs",
-                @"src\proj\a\none\a\10.cs",
-                @"src\a\proj\a\none\11.cs",
-                @"src\a\proj\a\none\a\12.cs"
-            },
-            new[]
-            {
-                @"src\a\proj\6.cs",
-                @"src\a\proj\a\7.cs",
-                @"src\proj\4.cs",
-                @"src\proj\a\5.cs"
-            })]
-        [InlineData(ItemWithIncludeAndExclude,
-            @"**\*",
-            "foo",
-            new[]
-            {
-                "foo",
-                @"a\foo",
-                @"a\a\foo",
-                @"a\b\foo",
-            },
-            new []
-            {
-                @"a\a\foo",
-                @"a\b\foo",
-                @"a\foo",
-                "build.proj"
-            })]
-        [InlineData(ItemWithIncludeAndExclude,
-            @"**\*",
-            @"a\af*\*",
-            new[]
-            {
-                @"a\foo",
-                @"a\a\foo",
-                @"a\b\foo",
-            },
-            new[]
-            {
-                @"a\a\foo",
-                @"a\b\foo",
-                @"a\foo",
-                "build.proj"
-            })]
-        public void ExcludeVectorWithWildCards(string projectContents, string includeString, string excludeString, string[] inputFiles, string[] expectedInclude)
+        [MemberData(nameof(IncludesAndExcludesWithWildcardsTestData))]
+        public void ExcludeVectorWithWildCards(string includeString, string excludeString, string[] inputFiles, string[] expectedInclude, bool makeExpectedIncludeAbsolute)
         {
-            TestIncludeExcludeWithDifferentSlashes(projectContents, includeString, excludeString, inputFiles, expectedInclude);
+            TestIncludeExcludeWithDifferentSlashes(ItemWithIncludeAndExclude, includeString, excludeString, inputFiles, expectedInclude, makeExpectedIncludeAbsolute);
         }
 
         [Theory]
@@ -734,53 +658,68 @@ namespace Microsoft.Build.UnitTests.OM.Definition
         }
 
         [Theory]
-        [PlatformSpecific(Xunit.PlatformID.Windows)]
+        [PlatformSpecific(TestPlatforms.Windows)]
         [InlineData(ItemWithIncludeAndExclude,
             @"src/**/*.cs",
             new[]
             {
-                @"src\a.cs",
-                @"src\a\b\b.cs",
+                @"src/a.cs",
+                @"src/a/b/b.cs",
             },
             new[]
             {
                 @"src/a.cs",
-                @"src/a\b\b.cs",
+                @"src/a/b/b.cs",
             })]
         [InlineData(ItemWithIncludeAndExclude,
             @"src/test/**/*.cs",
             new[]
             {
-                @"src\test\a.cs",
-                @"src\test\a\b\c.cs",
+                @"src/test/a.cs",
+                @"src/test/a/b/c.cs",
             },
             new[]
             {
                 @"src/test/a.cs",
-                @"src/test/a\b\c.cs",
+                @"src/test/a/b/c.cs",
             })]
         [InlineData(ItemWithIncludeAndExclude,
             @"src/test/**/a/b/**/*.cs",
             new[]
             {
-                @"src\test\dir\a\b\a.cs",
-                @"src\test\dir\a\b\c\a.cs",
+                @"src/test/dir/a/b/a.cs",
+                @"src/test/dir/a/b/c/a.cs",
             },
             new[]
             {
-                @"src/test/dir\a\b\a.cs",
-                @"src/test/dir\a\b\c\a.cs",
+                @"src/test/dir/a/b/a.cs",
+                @"src/test/dir/a/b/c/a.cs",
             })]
-        public void IncludeWithWildcardShouldPreserveUserSlashesInFixedDirPart(string projectContents, string includeString, string[] inputFiles, string[] expectedInclude)
+        public void IncludeWithWildcardShouldNotPreserveUserSlashesInFixedDirectoryPart(string projectContents, string includeString, string[] inputFiles, string[] expectedInclude)
         {
+            Func<string, char, string> setSlashes = (s, c) => s.Replace('/', c).Replace('\\', c);
+
+            // set the include string slashes to the opposite orientation relative to the OS default slash
+            if (NativeMethodsShared.IsWindows)
+            {
+                includeString = setSlashes(includeString, '/');
+            }
+            else
+            {
+                includeString = setSlashes(includeString, '\\');
+            }
+
+            // all the slashes in the expected items should be platform specific
+            expectedInclude = expectedInclude.Select(p => setSlashes(p, Path.DirectorySeparatorChar)).ToArray();
+
             TestIncludeExclude(projectContents, inputFiles, expectedInclude, includeString, "");
         }
 
-        private static void TestIncludeExcludeWithDifferentSlashes(string projectContents, string includeString, string excludeString, string[] inputFiles, string[] expectedInclude)
+        private static void TestIncludeExcludeWithDifferentSlashes(string projectContents, string includeString, string excludeString, string[] inputFiles, string[] expectedInclude, bool makeExpectedIncludeAbsolute = false)
         {
             Action<string, string> runTest = (include, exclude) =>
             {
-                TestIncludeExclude(projectContents, inputFiles, expectedInclude, include, exclude, normalizeSlashes: true);
+                TestIncludeExclude(projectContents, inputFiles, expectedInclude, include, exclude, normalizeSlashes: true, makeExpectedIncludeAbsolute:makeExpectedIncludeAbsolute);
             };
 
             var includeWithForwardSlash = Helpers.ToForwardSlash(includeString);
@@ -792,10 +731,10 @@ namespace Microsoft.Build.UnitTests.OM.Definition
             runTest(includeWithForwardSlash, excludeString);
         }
 
-        private static void TestIncludeExclude(string projectContents, string[] inputFiles, string[] expectedInclude, string include, string exclude, bool normalizeSlashes = false)
+        private static void TestIncludeExclude(string projectContents, string[] inputFiles, string[] expectedInclude, string include, string exclude, bool normalizeSlashes = false, bool makeExpectedIncludeAbsolute = false)
         {
             var formattedProjectContents = string.Format(projectContents, include, exclude);
-            ObjectModelHelpers.AssertItemEvaluation(formattedProjectContents, inputFiles, expectedInclude, expectedMetadataPerItem: null, normalizeSlashes: normalizeSlashes);
+            ObjectModelHelpers.AssertItemEvaluationFromProject(formattedProjectContents, inputFiles, expectedInclude, expectedMetadataPerItem: null, normalizeSlashes: normalizeSlashes, makeExpectedIncludeAbsolute: makeExpectedIncludeAbsolute);
         }
 
         [Theory]
@@ -1012,7 +951,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
             Assert.Equal("m1", item2.GetMetadataValue("m"));
 
             // Should still point at the same XML items
-            Assert.Equal(true, Object.ReferenceEquals(item1.GetMetadata("m").Xml, item2.GetMetadata("m").Xml));
+            Assert.True(Object.ReferenceEquals(item1.GetMetadata("m").Xml, item2.GetMetadata("m").Xml));
         }
 
         /// <summary>
@@ -1207,12 +1146,12 @@ namespace Microsoft.Build.UnitTests.OM.Definition
             Assert.Equal("", project.GetItems("m").ElementAt(1).GetMetadataValue("p"));
 
             // Should still point at the same XML metadata
-            Assert.Equal(true, Object.ReferenceEquals(project.GetItems("i").First().GetMetadata("l").Xml, project.GetItems("m").First().GetMetadata("l").Xml));
-            Assert.Equal(true, Object.ReferenceEquals(project.GetItems("i").First().GetMetadata("m").Xml, project.GetItems("m").First().GetMetadata("m").Xml));
-            Assert.Equal(true, Object.ReferenceEquals(project.GetItems("i").First().GetMetadata("n").Xml, project.GetItems("m").First().GetMetadata("n").Xml));
-            Assert.Equal(true, Object.ReferenceEquals(project.GetItems("j").First().GetMetadata("o").Xml, project.GetItems("k").First().GetMetadata("o").Xml));
-            Assert.Equal(true, Object.ReferenceEquals(project.GetItems("k").First().GetMetadata("p").Xml, project.GetItems("m").First().GetMetadata("p").Xml));
-            Assert.Equal(true, !Object.ReferenceEquals(project.GetItems("j").First().GetMetadata("p").Xml, project.GetItems("m").First().GetMetadata("p").Xml));
+            Assert.True(Object.ReferenceEquals(project.GetItems("i").First().GetMetadata("l").Xml, project.GetItems("m").First().GetMetadata("l").Xml));
+            Assert.True(Object.ReferenceEquals(project.GetItems("i").First().GetMetadata("m").Xml, project.GetItems("m").First().GetMetadata("m").Xml));
+            Assert.True(Object.ReferenceEquals(project.GetItems("i").First().GetMetadata("n").Xml, project.GetItems("m").First().GetMetadata("n").Xml));
+            Assert.True(Object.ReferenceEquals(project.GetItems("j").First().GetMetadata("o").Xml, project.GetItems("k").First().GetMetadata("o").Xml));
+            Assert.True(Object.ReferenceEquals(project.GetItems("k").First().GetMetadata("p").Xml, project.GetItems("m").First().GetMetadata("p").Xml));
+            Assert.True(!Object.ReferenceEquals(project.GetItems("j").First().GetMetadata("p").Xml, project.GetItems("m").First().GetMetadata("p").Xml));
         }
 
         /// <summary>
@@ -1304,12 +1243,12 @@ namespace Microsoft.Build.UnitTests.OM.Definition
             Assert.Equal("", project.GetItems("m").ElementAt(1).GetMetadataValue("p"));
 
             // Should still point at the same XML metadata
-            Assert.Equal(true, Object.ReferenceEquals(project.GetItems("i").First().GetMetadata("l").Xml, project.GetItems("m").First().GetMetadata("l").Xml));
-            Assert.Equal(true, Object.ReferenceEquals(project.GetItems("i").First().GetMetadata("m").Xml, project.GetItems("m").First().GetMetadata("m").Xml));
-            Assert.Equal(true, Object.ReferenceEquals(project.GetItems("i").First().GetMetadata("n").Xml, project.GetItems("m").First().GetMetadata("n").Xml));
-            Assert.Equal(true, Object.ReferenceEquals(project.GetItems("j").First().GetMetadata("o").Xml, project.GetItems("k").First().GetMetadata("o").Xml));
-            Assert.Equal(true, Object.ReferenceEquals(project.GetItems("k").First().GetMetadata("p").Xml, project.GetItems("m").First().GetMetadata("p").Xml));
-            Assert.Equal(true, !Object.ReferenceEquals(project.GetItems("j").First().GetMetadata("p").Xml, project.GetItems("m").First().GetMetadata("p").Xml));
+            Assert.True(Object.ReferenceEquals(project.GetItems("i").First().GetMetadata("l").Xml, project.GetItems("m").First().GetMetadata("l").Xml));
+            Assert.True(Object.ReferenceEquals(project.GetItems("i").First().GetMetadata("m").Xml, project.GetItems("m").First().GetMetadata("m").Xml));
+            Assert.True(Object.ReferenceEquals(project.GetItems("i").First().GetMetadata("n").Xml, project.GetItems("m").First().GetMetadata("n").Xml));
+            Assert.True(Object.ReferenceEquals(project.GetItems("j").First().GetMetadata("o").Xml, project.GetItems("k").First().GetMetadata("o").Xml));
+            Assert.True(Object.ReferenceEquals(project.GetItems("k").First().GetMetadata("p").Xml, project.GetItems("m").First().GetMetadata("p").Xml));
+            Assert.True(!Object.ReferenceEquals(project.GetItems("j").First().GetMetadata("p").Xml, project.GetItems("m").First().GetMetadata("p").Xml));
         }
 
         /// <summary>
@@ -1679,8 +1618,8 @@ namespace Microsoft.Build.UnitTests.OM.Definition
 
             bool found = item.RemoveMetadata("m");
 
-            Assert.Equal(true, found);
-            Assert.Equal(true, project.IsDirty);
+            Assert.True(found);
+            Assert.True(project.IsDirty);
             Assert.Equal(String.Empty, item.GetMetadataValue("m"));
             Assert.Equal(0, Helpers.Count(item.Xml.Metadata));
         }
@@ -1699,11 +1638,11 @@ namespace Microsoft.Build.UnitTests.OM.Definition
             ProjectItem item = Helpers.GetFirst(project.GetItems("i"));
 
             bool found = item.RemoveMetadata("m");
-            Assert.Equal(true, found);
+            Assert.True(found);
             Assert.Equal(0, item.DirectMetadataCount);
             Assert.Equal(0, Helpers.Count(item.DirectMetadata));
             Assert.Equal("m1", item.GetMetadataValue("m")); // Now originating from definition!
-            Assert.Equal(true, project.IsDirty);
+            Assert.True(project.IsDirty);
             Assert.Equal(0, item.Xml.Count);
         }
 
@@ -1738,8 +1677,8 @@ namespace Microsoft.Build.UnitTests.OM.Definition
 
             bool found = item.RemoveMetadata("m");
 
-            Assert.Equal(false, found);
-            Assert.Equal(false, project.IsDirty);
+            Assert.False(found);
+            Assert.False(project.IsDirty);
         }
 
         /// <summary>
@@ -1777,7 +1716,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
 
             Assert.Equal("i2", item.Xml.Include);
             Assert.Equal("i2", item.EvaluatedInclude);
-            Assert.Equal(true, project.IsDirty);
+            Assert.True(project.IsDirty);
             Assert.Equal("i2", item.GetMetadataValue("FileName"));
         }
 
@@ -1831,7 +1770,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
             item.ItemType = "j";
 
             Assert.Equal("j", item.ItemType);
-            Assert.Equal(true, project.IsDirty);
+            Assert.True(project.IsDirty);
         }
 
         /// <summary>
@@ -1998,7 +1937,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
                 Assert.Equal("M", metadata.Name);
                 Assert.Equal("V", metadata.EvaluatedValue);
 
-                Assert.Equal(1, item.Xml.Metadata.Count);
+                Assert.Single(item.Xml.Metadata);
 
                 ProjectMetadataElement metadataElement = item.Xml.Metadata.FirstOrDefault();
                 Assert.Equal("M", metadataElement.Name);
@@ -2101,7 +2040,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
                 {
                     var metadata = item.Metadata;
 
-                    Assert.Equal(1, metadata.Count);
+                    Assert.Single(metadata);
 
                     var m1 = metadata.ElementAt(0);
                     Assert.Equal("M1", m1.Name);
@@ -2110,7 +2049,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
 
                 var metadataElements = items.First().Xml.Metadata;
 
-                Assert.Equal(1, metadataElements.Count);
+                Assert.Single(metadataElements);
 
                 var me1 = metadataElements.ElementAt(0);
                 Assert.Equal("M1", me1.Name);
@@ -2127,7 +2066,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
                 "<i Remove='b;c' />"
                 );
 
-            Assert.Equal(1, items.Count);
+            Assert.Single(items);
             Assert.Equal("a", items[0].EvaluatedInclude);
         }
 
@@ -2411,7 +2350,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
 
             var exception = Assert.Throws<InvalidProjectFileException>(() =>
             {
-                IList<ProjectItem> items = ObjectModelHelpers.GetItemsFromFragment(content);
+                ObjectModelHelpers.GetItemsFromFragment(content);
             });
 
             Assert.Equal("The required attribute \"Update\" is empty or missing from the element <i>.", exception.Message);
@@ -2601,7 +2540,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
 
             IList<ProjectItem> items = ObjectModelHelpers.GetItemsFromFragment(content);
 
-            Assert.Equal(1, items.Count);
+            Assert.Single(items);
 
             var expectedUpdated = new Dictionary<string, string>
             {
@@ -2702,7 +2641,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
         public void UpdateAndRemoveShouldWorkWithEscapedCharacters(string projectContents, string include, string update, string remove, string[] expectedInclude, Dictionary<string, string>[] expectedMetadata)
         {
             var formattedProjectContents = string.Format(projectContents, include, update, remove);
-            ObjectModelHelpers.AssertItemEvaluation(formattedProjectContents, new string[0], expectedInclude, expectedMetadata);
+            ObjectModelHelpers.AssertItemEvaluationFromProject(formattedProjectContents, new string[0], expectedInclude, expectedMetadata);
         }
 
         [Theory]
@@ -2757,7 +2696,7 @@ namespace Microsoft.Build.UnitTests.OM.Definition
         {
             IList<ProjectItem> items = ObjectModelHelpers.GetItemsFromFragment(fragment);
 
-            Assert.Equal(1, items.Count);
+            Assert.Single(items);
             return items[0];
         }
 
@@ -2769,8 +2708,32 @@ namespace Microsoft.Build.UnitTests.OM.Definition
         {
             IList<ProjectItem> items = ObjectModelHelpers.GetItems(content);
 
-            Assert.Equal(1, items.Count);
+            Assert.Single(items);
             return items[0];
+        }
+
+        /// <summary>
+        /// Item metadata "Filename" should not depends on platform specific slashes.
+        /// </summary>
+        [Fact]
+        public void FileNameMetadataEvaluationShouldNotDependsFromPlatformSpecificSlashes()
+        {
+            using (var env = TestEnvironment.Create())
+            using (var projectCollection = new ProjectCollection())
+            {
+                var testFiles = env.CreateTestProjectWithFiles(@"<?xml version=`1.0` encoding=`utf-8`?>
+                    <Project ToolsVersion=`msbuilddefaulttoolsversion` DefaultTargets=`Validate` xmlns=`msbuildnamespace`>
+                      <ItemGroup>
+                        <A Include=`A\B\C\D.cs` />
+                        <B Include=`@(A->'%(Filename)_test.ext')` />
+                      </ItemGroup>
+                    </Project>");
+                var project = new Project(testFiles.ProjectFile, new Dictionary<string, string>(), null, projectCollection);
+                var buildManager = BuildManager.DefaultBuildManager;
+                var projectInstance = buildManager.GetProjectInstanceForBuild(project);
+                var itemB = projectInstance.Items.Single(i => i.ItemType == "B").EvaluatedInclude;
+                itemB.ShouldBe("D_test.ext");
+            }
         }
     }
 }
